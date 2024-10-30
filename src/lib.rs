@@ -292,44 +292,31 @@
 //! [`BorrowedFd<'a>`]: ../os/fd/struct.BorrowedFd.html
 //! [`Arc`]: crate::sync::Arc
 
-#![stable(feature = "rust1", since = "1.0.0")]
-
 #[cfg(test)]
 mod tests;
 
-use crate::cmp;
-use crate::fmt;
-use crate::mem::take;
-use crate::ops::{Deref, DerefMut};
-use crate::slice;
-use crate::str;
-use crate::sys;
+extern crate alloc;
+
+use alloc::fmt;
+use alloc::str;
+use core::cmp;
+use core::mem::take;
+use core::ops::{Deref, DerefMut};
+use core::slice;
 use core::slice::memchr;
 
-#[stable(feature = "bufwriter_into_parts", since = "1.56.0")]
 pub use self::buffered::WriterPanicked;
-#[unstable(feature = "raw_os_error_ty", issue = "107792")]
+
 pub use self::error::RawOsError;
-pub(crate) use self::stdio::attempt_print_to_stderr;
-#[stable(feature = "is_terminal", since = "1.70.0")]
-pub use self::stdio::IsTerminal;
-#[unstable(feature = "print_internals", issue = "none")]
-#[doc(hidden)]
-pub use self::stdio::{_eprint, _print};
-#[unstable(feature = "internal_output_capture", issue = "none")]
-#[doc(no_inline, hidden)]
-pub use self::stdio::{set_output_capture, try_set_output_capture};
-#[stable(feature = "rust1", since = "1.0.0")]
+
 pub use self::{
     buffered::{BufReader, BufWriter, IntoInnerError, LineWriter},
     copy::copy,
     cursor::Cursor,
     error::{Error, ErrorKind, Result},
-    stdio::{stderr, stdin, stdout, Stderr, StderrLock, Stdin, StdinLock, Stdout, StdoutLock},
     util::{empty, repeat, sink, Empty, Repeat, Sink},
 };
 
-#[unstable(feature = "read_buf", issue = "78485")]
 pub use core::io::{BorrowedBuf, BorrowedCursor};
 pub(crate) use error::const_io_error;
 
@@ -339,12 +326,9 @@ mod cursor;
 mod error;
 mod impls;
 pub mod prelude;
-mod stdio;
 mod util;
 
-const DEFAULT_BUF_SIZE: usize = crate::sys_common::io::DEFAULT_BUF_SIZE;
-
-pub(crate) use stdio::cleanup;
+const DEFAULT_BUF_SIZE: usize = 1024;
 
 struct Guard<'a> {
     buf: &'a mut Vec<u8>,
@@ -382,7 +366,10 @@ pub(crate) unsafe fn append_to_string<F>(buf: &mut String, f: F) -> Result<usize
 where
     F: FnOnce(&mut Vec<u8>) -> Result<usize>,
 {
-    let mut g = Guard { len: buf.len(), buf: unsafe { buf.as_mut_vec() } };
+    let mut g = Guard {
+        len: buf.len(),
+        buf: unsafe { buf.as_mut_vec() },
+    };
     let ret = f(g.buf);
 
     // SAFETY: the caller promises to only append data to `buf`
@@ -415,7 +402,10 @@ pub(crate) fn default_read_to_end<R: Read + ?Sized>(
     // Optionally limit the maximum bytes read on each iteration.
     // This adds an arbitrary fiddle factor to allow for more data than we expect.
     let mut max_read_size = size_hint
-        .and_then(|s| s.checked_add(1024)?.checked_next_multiple_of(DEFAULT_BUF_SIZE))
+        .and_then(|s| {
+            s.checked_add(1024)?
+                .checked_next_multiple_of(DEFAULT_BUF_SIZE)
+        })
         .unwrap_or(DEFAULT_BUF_SIZE);
 
     let mut initialized = 0; // Extra initialized bytes from previous loop iteration
@@ -541,7 +531,10 @@ pub(crate) fn default_read_vectored<F>(read: F, bufs: &mut [IoSliceMut<'_>]) -> 
 where
     F: FnOnce(&mut [u8]) -> Result<usize>,
 {
-    let buf = bufs.iter_mut().find(|b| !b.is_empty()).map_or(&mut [][..], |b| &mut **b);
+    let buf = bufs
+        .iter_mut()
+        .find(|b| !b.is_empty())
+        .map_or(&mut [][..], |b| &mut **b);
     read(buf)
 }
 
@@ -549,7 +542,10 @@ pub(crate) fn default_write_vectored<F>(write: F, bufs: &[IoSlice<'_>]) -> Resul
 where
     F: FnOnce(&[u8]) -> Result<usize>,
 {
-    let buf = bufs.iter().find(|b| !b.is_empty()).map_or(&[][..], |b| &**b);
+    let buf = bufs
+        .iter()
+        .find(|b| !b.is_empty())
+        .map_or(&[][..], |b| &**b);
     write(buf)
 }
 
@@ -564,7 +560,11 @@ pub(crate) fn default_read_exact<R: Read + ?Sized>(this: &mut R, mut buf: &mut [
             Err(e) => return Err(e),
         }
     }
-    if !buf.is_empty() { Err(Error::READ_EXACT_EOF) } else { Ok(()) }
+    if !buf.is_empty() {
+        Err(Error::READ_EXACT_EOF)
+    } else {
+        Ok(())
+    }
 }
 
 pub(crate) fn default_read_buf<F>(read: F, mut cursor: BorrowedCursor<'_>) -> Result<()>
@@ -669,7 +669,7 @@ pub(crate) fn default_read_buf_exact<R: Read + ?Sized>(
 /// [`&str`]: prim@str
 /// [`std::io`]: self
 /// [`File`]: crate::fs::File
-#[stable(feature = "rust1", since = "1.0.0")]
+
 #[doc(notable_trait)]
 #[cfg_attr(not(test), rustc_diagnostic_item = "IoRead")]
 pub trait Read {
@@ -717,7 +717,7 @@ pub trait Read {
     /// before calling `read`. Calling `read` with an uninitialized `buf` (of the kind one
     /// obtains via [`MaybeUninit<T>`]) is not safe, and can lead to undefined behavior.
     ///
-    /// [`MaybeUninit<T>`]: crate::mem::MaybeUninit
+    /// [`MaybeUninit<T>`]: core::mem::MaybeUninit
     ///
     /// # Errors
     ///
@@ -752,7 +752,7 @@ pub trait Read {
     ///     Ok(())
     /// }
     /// ```
-    #[stable(feature = "rust1", since = "1.0.0")]
+
     fn read(&mut self, buf: &mut [u8]) -> Result<usize>;
 
     /// Like `read`, except that it reads into a slice of buffers.
@@ -764,7 +764,7 @@ pub trait Read {
     ///
     /// The default implementation calls `read` with either the first nonempty
     /// buffer provided, or an empty one if none exists.
-    #[stable(feature = "iovec", since = "1.36.0")]
+
     fn read_vectored(&mut self, bufs: &mut [IoSliceMut<'_>]) -> Result<usize> {
         default_read_vectored(|b| self.read(b), bufs)
     }
@@ -777,7 +777,7 @@ pub trait Read {
     /// and coalesce writes into a single buffer for higher performance.
     ///
     /// The default implementation returns `false`.
-    #[unstable(feature = "can_vector", issue = "69941")]
+
     fn is_read_vectored(&self) -> bool {
         false
     }
@@ -861,7 +861,7 @@ pub trait Read {
     /// ```
     ///
     /// [`Vec::try_reserve`]: crate::vec::Vec::try_reserve
-    #[stable(feature = "rust1", since = "1.0.0")]
+
     fn read_to_end(&mut self, buf: &mut Vec<u8>) -> Result<usize> {
         default_read_to_end(self, buf, None)
     }
@@ -904,7 +904,7 @@ pub trait Read {
     /// reading from a file.)
     ///
     /// [`std::fs::read_to_string`]: crate::fs::read_to_string
-    #[stable(feature = "rust1", since = "1.0.0")]
+
     fn read_to_string(&mut self, buf: &mut String) -> Result<usize> {
         default_read_to_string(self, buf, None)
     }
@@ -957,7 +957,7 @@ pub trait Read {
     ///     Ok(())
     /// }
     /// ```
-    #[stable(feature = "read_exact", since = "1.6.0")]
+
     fn read_exact(&mut self, buf: &mut [u8]) -> Result<()> {
         default_read_exact(self, buf)
     }
@@ -968,7 +968,7 @@ pub trait Read {
     /// with uninitialized buffers. The new data will be appended to any existing contents of `buf`.
     ///
     /// The default implementation delegates to `read`.
-    #[unstable(feature = "read_buf", issue = "78485")]
+
     fn read_buf(&mut self, buf: BorrowedCursor<'_>) -> Result<()> {
         default_read_buf(|b| self.read(b), buf)
     }
@@ -991,7 +991,7 @@ pub trait Read {
     /// returns.
     ///
     /// If this function returns an error, all bytes read will be appended to `cursor`.
-    #[unstable(feature = "read_buf", issue = "78485")]
+
     fn read_buf_exact(&mut self, cursor: BorrowedCursor<'_>) -> Result<()> {
         default_read_buf_exact(self, cursor)
     }
@@ -1030,7 +1030,7 @@ pub trait Read {
     ///     Ok(())
     /// }
     /// ```
-    #[stable(feature = "rust1", since = "1.0.0")]
+
     fn by_ref(&mut self) -> &mut Self
     where
         Self: Sized,
@@ -1073,7 +1073,7 @@ pub trait Read {
     ///     Ok(())
     /// }
     /// ```
-    #[stable(feature = "rust1", since = "1.0.0")]
+
     fn bytes(self) -> Bytes<Self>
     where
         Self: Sized,
@@ -1111,12 +1111,16 @@ pub trait Read {
     ///     Ok(())
     /// }
     /// ```
-    #[stable(feature = "rust1", since = "1.0.0")]
+
     fn chain<R: Read>(self, next: R) -> Chain<Self, R>
     where
         Self: Sized,
     {
-        Chain { first: self, second: next, done_first: false }
+        Chain {
+            first: self,
+            second: next,
+            done_first: false,
+        }
     }
 
     /// Creates an adapter which will read at most `limit` bytes from it.
@@ -1150,7 +1154,7 @@ pub trait Read {
     ///     Ok(())
     /// }
     /// ```
-    #[stable(feature = "rust1", since = "1.0.0")]
+
     fn take(self, limit: u64) -> Take<Self>
     where
         Self: Sized,
@@ -1203,7 +1207,7 @@ pub trait Read {
 ///     Ok(())
 /// }
 /// ```
-#[stable(feature = "io_read_to_string", since = "1.65.0")]
+
 pub fn read_to_string<R: Read>(mut reader: R) -> Result<String> {
     let mut buf = String::new();
     reader.read_to_string(&mut buf)?;
@@ -1215,17 +1219,14 @@ pub fn read_to_string<R: Read>(mut reader: R) -> Result<String> {
 /// It is semantically a wrapper around an `&mut [u8]`, but is guaranteed to be
 /// ABI compatible with the `iovec` type on Unix platforms and `WSABUF` on
 /// Windows.
-#[stable(feature = "iovec", since = "1.36.0")]
+
 #[repr(transparent)]
 pub struct IoSliceMut<'a>(sys::io::IoSliceMut<'a>);
 
-#[stable(feature = "iovec_send_sync", since = "1.44.0")]
 unsafe impl<'a> Send for IoSliceMut<'a> {}
 
-#[stable(feature = "iovec_send_sync", since = "1.44.0")]
 unsafe impl<'a> Sync for IoSliceMut<'a> {}
 
-#[stable(feature = "iovec", since = "1.36.0")]
 impl<'a> fmt::Debug for IoSliceMut<'a> {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Debug::fmt(self.0.as_slice(), fmt)
@@ -1238,7 +1239,7 @@ impl<'a> IoSliceMut<'a> {
     /// # Panics
     ///
     /// Panics on Windows if the slice is larger than 4GB.
-    #[stable(feature = "iovec", since = "1.36.0")]
+
     #[inline]
     pub fn new(buf: &'a mut [u8]) -> IoSliceMut<'a> {
         IoSliceMut(sys::io::IoSliceMut::new(buf))
@@ -1266,7 +1267,7 @@ impl<'a> IoSliceMut<'a> {
     /// buf.advance(3);
     /// assert_eq!(buf.deref(), [1; 5].as_ref());
     /// ```
-    #[stable(feature = "io_slice_advance", since = "1.81.0")]
+
     #[inline]
     pub fn advance(&mut self, n: usize) {
         self.0.advance(n)
@@ -1305,7 +1306,7 @@ impl<'a> IoSliceMut<'a> {
     /// assert_eq!(bufs[0].deref(), [2; 14].as_ref());
     /// assert_eq!(bufs[1].deref(), [3; 8].as_ref());
     /// ```
-    #[stable(feature = "io_slice_advance", since = "1.81.0")]
+
     #[inline]
     pub fn advance_slices(bufs: &mut &mut [IoSliceMut<'a>], n: usize) {
         // Number of buffers to remove.
@@ -1330,7 +1331,6 @@ impl<'a> IoSliceMut<'a> {
     }
 }
 
-#[stable(feature = "iovec", since = "1.36.0")]
 impl<'a> Deref for IoSliceMut<'a> {
     type Target = [u8];
 
@@ -1340,7 +1340,6 @@ impl<'a> Deref for IoSliceMut<'a> {
     }
 }
 
-#[stable(feature = "iovec", since = "1.36.0")]
 impl<'a> DerefMut for IoSliceMut<'a> {
     #[inline]
     fn deref_mut(&mut self) -> &mut [u8] {
@@ -1353,18 +1352,15 @@ impl<'a> DerefMut for IoSliceMut<'a> {
 /// It is semantically a wrapper around a `&[u8]`, but is guaranteed to be
 /// ABI compatible with the `iovec` type on Unix platforms and `WSABUF` on
 /// Windows.
-#[stable(feature = "iovec", since = "1.36.0")]
+
 #[derive(Copy, Clone)]
 #[repr(transparent)]
 pub struct IoSlice<'a>(sys::io::IoSlice<'a>);
 
-#[stable(feature = "iovec_send_sync", since = "1.44.0")]
 unsafe impl<'a> Send for IoSlice<'a> {}
 
-#[stable(feature = "iovec_send_sync", since = "1.44.0")]
 unsafe impl<'a> Sync for IoSlice<'a> {}
 
-#[stable(feature = "iovec", since = "1.36.0")]
 impl<'a> fmt::Debug for IoSlice<'a> {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Debug::fmt(self.0.as_slice(), fmt)
@@ -1377,7 +1373,7 @@ impl<'a> IoSlice<'a> {
     /// # Panics
     ///
     /// Panics on Windows if the slice is larger than 4GB.
-    #[stable(feature = "iovec", since = "1.36.0")]
+
     #[must_use]
     #[inline]
     pub fn new(buf: &'a [u8]) -> IoSlice<'a> {
@@ -1406,7 +1402,7 @@ impl<'a> IoSlice<'a> {
     /// buf.advance(3);
     /// assert_eq!(buf.deref(), [1; 5].as_ref());
     /// ```
-    #[stable(feature = "io_slice_advance", since = "1.81.0")]
+
     #[inline]
     pub fn advance(&mut self, n: usize) {
         self.0.advance(n)
@@ -1444,7 +1440,7 @@ impl<'a> IoSlice<'a> {
     /// IoSlice::advance_slices(&mut bufs, 10);
     /// assert_eq!(bufs[0].deref(), [2; 14].as_ref());
     /// assert_eq!(bufs[1].deref(), [3; 8].as_ref());
-    #[stable(feature = "io_slice_advance", since = "1.81.0")]
+
     #[inline]
     pub fn advance_slices(bufs: &mut &mut [IoSlice<'a>], n: usize) {
         // Number of buffers to remove.
@@ -1472,7 +1468,6 @@ impl<'a> IoSlice<'a> {
     }
 }
 
-#[stable(feature = "iovec", since = "1.36.0")]
 impl<'a> Deref for IoSlice<'a> {
     type Target = [u8];
 
@@ -1527,7 +1522,7 @@ impl<'a> Deref for IoSlice<'a> {
 /// `write` in a loop until its entire input has been written.
 ///
 /// [`write_all`]: Write::write_all
-#[stable(feature = "rust1", since = "1.0.0")]
+
 #[doc(notable_trait)]
 #[cfg_attr(not(test), rustc_diagnostic_item = "IoWrite")]
 pub trait Write {
@@ -1576,7 +1571,7 @@ pub trait Write {
     /// ```
     ///
     /// [`Ok(n)`]: Ok
-    #[stable(feature = "rust1", since = "1.0.0")]
+
     fn write(&mut self, buf: &[u8]) -> Result<usize>;
 
     /// Like [`write`], except that it writes from a slice of buffers.
@@ -1610,7 +1605,7 @@ pub trait Write {
     /// ```
     ///
     /// [`write`]: Write::write
-    #[stable(feature = "iovec", since = "1.36.0")]
+
     fn write_vectored(&mut self, bufs: &[IoSlice<'_>]) -> Result<usize> {
         default_write_vectored(|b| self.write(b), bufs)
     }
@@ -1625,7 +1620,7 @@ pub trait Write {
     /// The default implementation returns `false`.
     ///
     /// [`write_vectored`]: Write::write_vectored
-    #[unstable(feature = "can_vector", issue = "69941")]
+
     fn is_write_vectored(&self) -> bool {
         false
     }
@@ -1653,7 +1648,7 @@ pub trait Write {
     ///     Ok(())
     /// }
     /// ```
-    #[stable(feature = "rust1", since = "1.0.0")]
+
     fn flush(&mut self) -> Result<()>;
 
     /// Attempts to write an entire buffer into this writer.
@@ -1687,7 +1682,7 @@ pub trait Write {
     ///     Ok(())
     /// }
     /// ```
-    #[stable(feature = "rust1", since = "1.0.0")]
+
     fn write_all(&mut self, mut buf: &[u8]) -> Result<()> {
         while !buf.is_empty() {
             match self.write(buf) {
@@ -1749,7 +1744,7 @@ pub trait Write {
     /// assert_eq!(writer, &[1, 2, 3, 4, 5, 6]);
     /// # Ok(()) }
     /// ```
-    #[unstable(feature = "write_all_vectored", issue = "70436")]
+
     fn write_all_vectored(&mut self, mut bufs: &mut [IoSlice<'_>]) -> Result<()> {
         // Guarantee that bufs is empty if it contains no data,
         // to avoid calling write_vectored if there is no data to be written.
@@ -1802,7 +1797,7 @@ pub trait Write {
     ///     Ok(())
     /// }
     /// ```
-    #[stable(feature = "rust1", since = "1.0.0")]
+
     fn write_fmt(&mut self, fmt: fmt::Arguments<'_>) -> Result<()> {
         // Create a shim which translates a Write to a fmt::Write and saves
         // off I/O errors. instead of discarding them
@@ -1823,7 +1818,10 @@ pub trait Write {
             }
         }
 
-        let mut output = Adapter { inner: self, error: Ok(()) };
+        let mut output = Adapter {
+            inner: self,
+            error: Ok(()),
+        };
         match fmt::write(&mut output, fmt) {
             Ok(()) => Ok(()),
             Err(..) => {
@@ -1862,7 +1860,7 @@ pub trait Write {
     ///     Ok(())
     /// }
     /// ```
-    #[stable(feature = "rust1", since = "1.0.0")]
+
     fn by_ref(&mut self) -> &mut Self
     where
         Self: Sized,
@@ -1897,7 +1895,7 @@ pub trait Write {
 ///     Ok(())
 /// }
 /// ```
-#[stable(feature = "rust1", since = "1.0.0")]
+
 #[cfg_attr(not(test), rustc_diagnostic_item = "IoSeek")]
 pub trait Seek {
     /// Seek to an offset, in bytes, in a stream.
@@ -1914,7 +1912,7 @@ pub trait Seek {
     /// Seeking can fail, for example because it might involve flushing a buffer.
     ///
     /// Seeking to a negative offset is considered an error.
-    #[stable(feature = "rust1", since = "1.0.0")]
+
     fn seek(&mut self, pos: SeekFrom) -> Result<u64>;
 
     /// Rewind to the beginning of a stream.
@@ -1945,7 +1943,7 @@ pub trait Seek {
     /// f.read_to_string(&mut buf).unwrap();
     /// assert_eq!(&buf, hello);
     /// ```
-    #[stable(feature = "seek_rewind", since = "1.55.0")]
+
     fn rewind(&mut self) -> Result<()> {
         self.seek(SeekFrom::Start(0))?;
         Ok(())
@@ -1985,7 +1983,7 @@ pub trait Seek {
     ///     Ok(())
     /// }
     /// ```
-    #[unstable(feature = "seek_stream_len", issue = "59359")]
+
     fn stream_len(&mut self) -> Result<u64> {
         let old_pos = self.stream_position()?;
         let len = self.seek(SeekFrom::End(0))?;
@@ -2022,7 +2020,7 @@ pub trait Seek {
     ///     Ok(())
     /// }
     /// ```
-    #[stable(feature = "seek_convenience", since = "1.51.0")]
+
     fn stream_position(&mut self) -> Result<u64> {
         self.seek(SeekFrom::Current(0))
     }
@@ -2049,8 +2047,8 @@ pub trait Seek {
     /// }
     /// ```
     ///
-    /// [`BufReader`]: crate::io::BufReader
-    #[stable(feature = "seek_seek_relative", since = "1.80.0")]
+    /// [`BufReader`]: crate::BufReader
+
     fn seek_relative(&mut self, offset: i64) -> Result<()> {
         self.seek(SeekFrom::Current(offset))?;
         Ok(())
@@ -2061,27 +2059,24 @@ pub trait Seek {
 ///
 /// It is used by the [`Seek`] trait.
 #[derive(Copy, PartialEq, Eq, Clone, Debug)]
-#[stable(feature = "rust1", since = "1.0.0")]
+
 pub enum SeekFrom {
     /// Sets the offset to the provided number of bytes.
-    #[stable(feature = "rust1", since = "1.0.0")]
-    Start(#[stable(feature = "rust1", since = "1.0.0")] u64),
+    Start(u64),
 
     /// Sets the offset to the size of this object plus the specified number of
     /// bytes.
     ///
     /// It is possible to seek beyond the end of an object, but it's an error to
     /// seek before byte 0.
-    #[stable(feature = "rust1", since = "1.0.0")]
-    End(#[stable(feature = "rust1", since = "1.0.0")] i64),
+    End(i64),
 
     /// Sets the offset to the current position plus the specified number of
     /// bytes.
     ///
     /// It is possible to seek beyond the end of an object, but it's an error to
     /// seek before byte 0.
-    #[stable(feature = "rust1", since = "1.0.0")]
-    Current(#[stable(feature = "rust1", since = "1.0.0")] i64),
+    Current(i64),
 }
 
 fn read_until<R: BufRead + ?Sized>(r: &mut R, delim: u8, buf: &mut Vec<u8>) -> Result<usize> {
@@ -2181,7 +2176,7 @@ fn skip_until<R: BufRead + ?Sized>(r: &mut R, delim: u8) -> Result<usize> {
 ///     Ok(())
 /// }
 /// ```
-#[stable(feature = "rust1", since = "1.0.0")]
+
 pub trait BufRead: Read {
     /// Returns the contents of the internal buffer, filling it with more data
     /// from the inner reader if it is empty.
@@ -2222,7 +2217,7 @@ pub trait BufRead: Read {
     /// let length = buffer.len();
     /// stdin.consume(length);
     /// ```
-    #[stable(feature = "rust1", since = "1.0.0")]
+
     fn fill_buf(&mut self) -> Result<&[u8]>;
 
     /// Tells this buffer that `amt` bytes have been consumed from the buffer,
@@ -2244,7 +2239,7 @@ pub trait BufRead: Read {
     /// that method's example includes an example of `consume()`.
     ///
     /// [`fill_buf`]: BufRead::fill_buf
-    #[stable(feature = "rust1", since = "1.0.0")]
+
     fn consume(&mut self, amt: usize);
 
     /// Check if the underlying `Read` has any data left to be read.
@@ -2273,7 +2268,7 @@ pub trait BufRead: Read {
     ///     println!("{line:?}");
     /// }
     /// ```
-    #[unstable(feature = "buf_read_has_data_left", reason = "recently added", issue = "86423")]
+
     fn has_data_left(&mut self) -> Result<bool> {
         self.fill_buf().map(|b| !b.is_empty())
     }
@@ -2332,7 +2327,7 @@ pub trait BufRead: Read {
     /// assert_eq!(num_bytes, 0);
     /// assert_eq!(buf, b"");
     /// ```
-    #[stable(feature = "rust1", since = "1.0.0")]
+
     fn read_until(&mut self, byte: u8, buf: &mut Vec<u8>) -> Result<usize> {
         read_until(self, byte, buf)
     }
@@ -2394,7 +2389,7 @@ pub trait BufRead: Read {
     /// assert_eq!(num_bytes, 11);
     /// assert_eq!(animal, b"Crustacean\0");
     /// ```
-    #[unstable(feature = "bufread_skip_until", issue = "111735")]
+
     fn skip_until(&mut self, byte: u8) -> Result<usize> {
         skip_until(self, byte)
     }
@@ -2420,7 +2415,7 @@ pub trait BufRead: Read {
     ///
     /// [`Ok(0)`]: Ok
     /// [`clear`]: String::clear
-    /// [`take`]: crate::io::Read::take
+    /// [`take`]: crate::Read::take
     ///
     /// # Errors
     ///
@@ -2462,7 +2457,7 @@ pub trait BufRead: Read {
     /// assert_eq!(num_bytes, 0);
     /// assert_eq!(buf, "");
     /// ```
-    #[stable(feature = "rust1", since = "1.0.0")]
+
     fn read_line(&mut self, buf: &mut String) -> Result<usize> {
         // Note that we are not calling the `.read_until` method here, but
         // rather our hardcoded implementation. For more details as to why, see
@@ -2500,12 +2495,15 @@ pub trait BufRead: Read {
     /// assert_eq!(split_iter.next(), Some(b"dolor".to_vec()));
     /// assert_eq!(split_iter.next(), None);
     /// ```
-    #[stable(feature = "rust1", since = "1.0.0")]
+
     fn split(self, byte: u8) -> Split<Self>
     where
         Self: Sized,
     {
-        Split { buf: self, delim: byte }
+        Split {
+            buf: self,
+            delim: byte,
+        }
     }
 
     /// Returns an iterator over the lines of this reader.
@@ -2537,7 +2535,7 @@ pub trait BufRead: Read {
     /// # Errors
     ///
     /// Each line of the iterator has the same error semantics as [`BufRead::read_line`].
-    #[stable(feature = "rust1", since = "1.0.0")]
+
     fn lines(self) -> Lines<Self>
     where
         Self: Sized,
@@ -2552,7 +2550,7 @@ pub trait BufRead: Read {
 /// Please see the documentation of [`chain`] for more details.
 ///
 /// [`chain`]: Read::chain
-#[stable(feature = "rust1", since = "1.0.0")]
+
 #[derive(Debug)]
 pub struct Chain<T, U> {
     first: T,
@@ -2579,7 +2577,7 @@ impl<T, U> Chain<T, U> {
     ///     Ok(())
     /// }
     /// ```
-    #[stable(feature = "more_io_inner_methods", since = "1.20.0")]
+
     pub fn into_inner(self) -> (T, U) {
         (self.first, self.second)
     }
@@ -2602,7 +2600,7 @@ impl<T, U> Chain<T, U> {
     ///     Ok(())
     /// }
     /// ```
-    #[stable(feature = "more_io_inner_methods", since = "1.20.0")]
+
     pub fn get_ref(&self) -> (&T, &U) {
         (&self.first, &self.second)
     }
@@ -2629,13 +2627,12 @@ impl<T, U> Chain<T, U> {
     ///     Ok(())
     /// }
     /// ```
-    #[stable(feature = "more_io_inner_methods", since = "1.20.0")]
+
     pub fn get_mut(&mut self) -> (&mut T, &mut U) {
         (&mut self.first, &mut self.second)
     }
 }
 
-#[stable(feature = "rust1", since = "1.0.0")]
 impl<T: Read, U: Read> Read for Chain<T, U> {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
         if !self.done_first {
@@ -2694,7 +2691,6 @@ impl<T: Read, U: Read> Read for Chain<T, U> {
     }
 }
 
-#[stable(feature = "chain_bufread", since = "1.9.0")]
 impl<T: BufRead, U: BufRead> BufRead for Chain<T, U> {
     fn fill_buf(&mut self) -> Result<&[u8]> {
         if !self.done_first {
@@ -2707,7 +2703,11 @@ impl<T: BufRead, U: BufRead> BufRead for Chain<T, U> {
     }
 
     fn consume(&mut self, amt: usize) {
-        if !self.done_first { self.first.consume(amt) } else { self.second.consume(amt) }
+        if !self.done_first {
+            self.first.consume(amt)
+        } else {
+            self.second.consume(amt)
+        }
     }
 
     fn read_until(&mut self, byte: u8, buf: &mut Vec<u8>) -> Result<usize> {
@@ -2737,7 +2737,10 @@ impl<T, U> SizeHint for Chain<T, U> {
 
     #[inline]
     fn upper_bound(&self) -> Option<usize> {
-        match (SizeHint::upper_bound(&self.first), SizeHint::upper_bound(&self.second)) {
+        match (
+            SizeHint::upper_bound(&self.first),
+            SizeHint::upper_bound(&self.second),
+        ) {
             (Some(first), Some(second)) => first.checked_add(second),
             _ => None,
         }
@@ -2750,7 +2753,7 @@ impl<T, U> SizeHint for Chain<T, U> {
 /// Please see the documentation of [`take`] for more details.
 ///
 /// [`take`]: Read::take
-#[stable(feature = "rust1", since = "1.0.0")]
+
 #[derive(Debug)]
 pub struct Take<T> {
     inner: T,
@@ -2783,7 +2786,7 @@ impl<T> Take<T> {
     ///     Ok(())
     /// }
     /// ```
-    #[stable(feature = "rust1", since = "1.0.0")]
+
     pub fn limit(&self) -> u64 {
         self.limit
     }
@@ -2811,7 +2814,7 @@ impl<T> Take<T> {
     ///     Ok(())
     /// }
     /// ```
-    #[stable(feature = "take_set_limit", since = "1.27.0")]
+
     pub fn set_limit(&mut self, limit: u64) {
         self.limit = limit;
     }
@@ -2836,7 +2839,7 @@ impl<T> Take<T> {
     ///     Ok(())
     /// }
     /// ```
-    #[stable(feature = "io_take_into_inner", since = "1.15.0")]
+
     pub fn into_inner(self) -> T {
         self.inner
     }
@@ -2861,7 +2864,7 @@ impl<T> Take<T> {
     ///     Ok(())
     /// }
     /// ```
-    #[stable(feature = "more_io_inner_methods", since = "1.20.0")]
+
     pub fn get_ref(&self) -> &T {
         &self.inner
     }
@@ -2890,13 +2893,12 @@ impl<T> Take<T> {
     ///     Ok(())
     /// }
     /// ```
-    #[stable(feature = "more_io_inner_methods", since = "1.20.0")]
+
     pub fn get_mut(&mut self) -> &mut T {
         &mut self.inner
     }
 }
 
-#[stable(feature = "rust1", since = "1.0.0")]
 impl<T: Read> Read for Take<T> {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
         // Don't call into inner reader at all at EOF because it may still block
@@ -2959,7 +2961,6 @@ impl<T: Read> Read for Take<T> {
     }
 }
 
-#[stable(feature = "rust1", since = "1.0.0")]
 impl<T: BufRead> BufRead for Take<T> {
     fn fill_buf(&mut self) -> Result<&[u8]> {
         // Don't call into inner reader at all at EOF because it may still block
@@ -3001,13 +3002,12 @@ impl<T> SizeHint for Take<T> {
 /// Please see the documentation of [`bytes`] for more details.
 ///
 /// [`bytes`]: Read::bytes
-#[stable(feature = "rust1", since = "1.0.0")]
+
 #[derive(Debug)]
 pub struct Bytes<R> {
     inner: R,
 }
 
-#[stable(feature = "rust1", since = "1.0.0")]
 impl<R: Read> Iterator for Bytes<R> {
     type Item = Result<u8>;
 
@@ -3033,7 +3033,7 @@ where
     Self: Read,
 {
     #[inline]
-    default fn spec_read_byte(&mut self) -> Option<Result<u8>> {
+    fn spec_read_byte(&mut self) -> Option<Result<u8>> {
         inlined_slow_read_byte(self)
     }
 }
@@ -3072,12 +3072,12 @@ trait SizeHint {
 
 impl<T: ?Sized> SizeHint for T {
     #[inline]
-    default fn lower_bound(&self) -> usize {
+    fn lower_bound(&self) -> usize {
         0
     }
 
     #[inline]
-    default fn upper_bound(&self) -> Option<usize> {
+    fn upper_bound(&self) -> Option<usize> {
         None
     }
 }
@@ -3125,14 +3125,13 @@ impl SizeHint for &[u8] {
 /// Please see the documentation of [`split`] for more details.
 ///
 /// [`split`]: BufRead::split
-#[stable(feature = "rust1", since = "1.0.0")]
+
 #[derive(Debug)]
 pub struct Split<B> {
     buf: B,
     delim: u8,
 }
 
-#[stable(feature = "rust1", since = "1.0.0")]
 impl<B: BufRead> Iterator for Split<B> {
     type Item = Result<Vec<u8>>;
 
@@ -3157,14 +3156,13 @@ impl<B: BufRead> Iterator for Split<B> {
 /// Please see the documentation of [`lines`] for more details.
 ///
 /// [`lines`]: BufRead::lines
-#[stable(feature = "rust1", since = "1.0.0")]
+
 #[derive(Debug)]
 #[cfg_attr(not(test), rustc_diagnostic_item = "IoLines")]
 pub struct Lines<B> {
     buf: B,
 }
 
-#[stable(feature = "rust1", since = "1.0.0")]
 impl<B: BufRead> Iterator for Lines<B> {
     type Item = Result<String>;
 

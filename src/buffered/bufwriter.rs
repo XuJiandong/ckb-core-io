@@ -1,10 +1,8 @@
 use crate::error;
-use crate::fmt;
-use crate::io::{
-    self, ErrorKind, IntoInnerError, IoSlice, Seek, SeekFrom, Write, DEFAULT_BUF_SIZE,
-};
-use crate::mem::{self, ManuallyDrop};
 use crate::ptr;
+use crate::{self, ErrorKind, IntoInnerError, IoSlice, Seek, SeekFrom, Write, DEFAULT_BUF_SIZE};
+use alloc::fmt;
+use core::mem::{self, ManuallyDrop};
 
 /// Wraps a writer and buffers its output.
 ///
@@ -65,7 +63,7 @@ use crate::ptr;
 /// [`TcpStream::write`]: crate::net::TcpStream::write
 /// [`TcpStream`]: crate::net::TcpStream
 /// [`flush`]: BufWriter::flush
-#[stable(feature = "rust1", since = "1.0.0")]
+
 pub struct BufWriter<W: ?Sized + Write> {
     // The buffer. Avoid using this like a normal `Vec` in common code paths.
     // That is, don't use `buf.push`, `buf.extend_from_slice`, or any other
@@ -91,7 +89,7 @@ impl<W: Write> BufWriter<W> {
     ///
     /// let mut buffer = BufWriter::new(TcpStream::connect("127.0.0.1:34254").unwrap());
     /// ```
-    #[stable(feature = "rust1", since = "1.0.0")]
+
     pub fn new(inner: W) -> BufWriter<W> {
         BufWriter::with_capacity(DEFAULT_BUF_SIZE, inner)
     }
@@ -109,9 +107,13 @@ impl<W: Write> BufWriter<W> {
     /// let stream = TcpStream::connect("127.0.0.1:34254").unwrap();
     /// let mut buffer = BufWriter::with_capacity(100, stream);
     /// ```
-    #[stable(feature = "rust1", since = "1.0.0")]
+
     pub fn with_capacity(capacity: usize, inner: W) -> BufWriter<W> {
-        BufWriter { inner, buf: Vec::with_capacity(capacity), panicked: false }
+        BufWriter {
+            inner,
+            buf: Vec::with_capacity(capacity),
+            panicked: false,
+        }
     }
 
     /// Unwraps this `BufWriter<W>`, returning the underlying writer.
@@ -133,7 +135,7 @@ impl<W: Write> BufWriter<W> {
     /// // unwrap the TcpStream and flush the buffer
     /// let stream = buffer.into_inner().unwrap();
     /// ```
-    #[stable(feature = "rust1", since = "1.0.0")]
+
     pub fn into_inner(mut self) -> Result<W, IntoInnerError<BufWriter<W>>> {
         match self.flush_buf() {
             Err(e) => Err(IntoInnerError::new(self, e)),
@@ -163,11 +165,15 @@ impl<W: Write> BufWriter<W> {
     /// assert_eq!(recovered_writer.len(), 0);
     /// assert_eq!(&buffered_data.unwrap(), b"ata");
     /// ```
-    #[stable(feature = "bufwriter_into_parts", since = "1.56.0")]
+
     pub fn into_parts(self) -> (W, Result<Vec<u8>, WriterPanicked>) {
         let mut this = ManuallyDrop::new(self);
         let buf = mem::take(&mut this.buf);
-        let buf = if !this.panicked { Ok(buf) } else { Err(WriterPanicked { buf }) };
+        let buf = if !this.panicked {
+            Ok(buf)
+        } else {
+            Err(WriterPanicked { buf })
+        };
 
         // SAFETY: double-drops are prevented by putting `this` in a ManuallyDrop that is never dropped
         let inner = unsafe { ptr::read(&this.inner) };
@@ -184,7 +190,7 @@ impl<W: ?Sized + Write> BufWriter<W> {
     /// "successfully written" (by returning nonzero success values from
     /// `write`), any 0-length writes from `inner` must be reported as i/o
     /// errors from this method.
-    pub(in crate::io) fn flush_buf(&mut self) -> io::Result<()> {
+    pub(crate) fn flush_buf(&mut self) -> io::Result<()> {
         /// Helper struct to ensure the buffer is updated after all the writes
         /// are complete. It tracks the number of written bytes and drains them
         /// all from the front of the buffer when dropped.
@@ -271,7 +277,7 @@ impl<W: ?Sized + Write> BufWriter<W> {
     /// // we can use reference just like buffer
     /// let reference = buffer.get_ref();
     /// ```
-    #[stable(feature = "rust1", since = "1.0.0")]
+
     pub fn get_ref(&self) -> &W {
         &self.inner
     }
@@ -291,7 +297,7 @@ impl<W: ?Sized + Write> BufWriter<W> {
     /// // we can use reference just like buffer
     /// let reference = buffer.get_mut();
     /// ```
-    #[stable(feature = "rust1", since = "1.0.0")]
+
     pub fn get_mut(&mut self) -> &mut W {
         &mut self.inner
     }
@@ -309,7 +315,7 @@ impl<W: ?Sized + Write> BufWriter<W> {
     /// // See how many bytes are currently buffered
     /// let bytes_buffered = buf_writer.buffer().len();
     /// ```
-    #[stable(feature = "bufreader_buffer", since = "1.37.0")]
+
     pub fn buffer(&self) -> &[u8] {
         &self.buf
     }
@@ -322,7 +328,7 @@ impl<W: ?Sized + Write> BufWriter<W> {
     /// That the buffer is a `Vec` is an implementation detail.
     /// Callers should not modify the capacity as there currently is no public API to do so
     /// and thus any capacity changes would be unexpected by the user.
-    pub(in crate::io) fn buffer_mut(&mut self) -> &mut Vec<u8> {
+    pub(crate) fn buffer_mut(&mut self) -> &mut Vec<u8> {
         &mut self.buf
     }
 
@@ -341,7 +347,7 @@ impl<W: ?Sized + Write> BufWriter<W> {
     /// // Calculate how many bytes can be written without flushing
     /// let without_flush = capacity - buf_writer.buffer().len();
     /// ```
-    #[stable(feature = "buffered_io_capacity", since = "1.46.0")]
+
     pub fn capacity(&self) -> usize {
         self.buf.capacity()
     }
@@ -446,7 +452,6 @@ impl<W: ?Sized + Write> BufWriter<W> {
     }
 }
 
-#[stable(feature = "bufwriter_into_parts", since = "1.56.0")]
 /// Error returned for the buffered data from `BufWriter::into_parts`, when the underlying
 /// writer has previously panicked.  Contains the (possibly partly written) buffered data.
 ///
@@ -480,7 +485,7 @@ impl WriterPanicked {
     /// Returns the perhaps-unwritten data.  Some of this data may have been written by the
     /// panicking call(s) to the underlying writer, so simply writing it again is not a good idea.
     #[must_use = "`self` will be dropped if the result is not used"]
-    #[stable(feature = "bufwriter_into_parts", since = "1.56.0")]
+
     pub fn into_inner(self) -> Vec<u8> {
         self.buf
     }
@@ -489,7 +494,6 @@ impl WriterPanicked {
         "BufWriter inner writer panicked, what data remains unwritten is not known";
 }
 
-#[stable(feature = "bufwriter_into_parts", since = "1.56.0")]
 impl error::Error for WriterPanicked {
     #[allow(deprecated, deprecated_in_future)]
     fn description(&self) -> &str {
@@ -497,23 +501,23 @@ impl error::Error for WriterPanicked {
     }
 }
 
-#[stable(feature = "bufwriter_into_parts", since = "1.56.0")]
 impl fmt::Display for WriterPanicked {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", Self::DESCRIPTION)
     }
 }
 
-#[stable(feature = "bufwriter_into_parts", since = "1.56.0")]
 impl fmt::Debug for WriterPanicked {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("WriterPanicked")
-            .field("buffer", &format_args!("{}/{}", self.buf.len(), self.buf.capacity()))
+            .field(
+                "buffer",
+                &format_args!("{}/{}", self.buf.len(), self.buf.capacity()),
+            )
             .finish()
     }
 }
 
-#[stable(feature = "rust1", since = "1.0.0")]
 impl<W: ?Sized + Write> Write for BufWriter<W> {
     #[inline]
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
@@ -645,7 +649,6 @@ impl<W: ?Sized + Write> Write for BufWriter<W> {
     }
 }
 
-#[stable(feature = "rust1", since = "1.0.0")]
 impl<W: ?Sized + Write> fmt::Debug for BufWriter<W>
 where
     W: fmt::Debug,
@@ -653,12 +656,14 @@ where
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt.debug_struct("BufWriter")
             .field("writer", &&self.inner)
-            .field("buffer", &format_args!("{}/{}", self.buf.len(), self.buf.capacity()))
+            .field(
+                "buffer",
+                &format_args!("{}/{}", self.buf.len(), self.buf.capacity()),
+            )
             .finish()
     }
 }
 
-#[stable(feature = "rust1", since = "1.0.0")]
 impl<W: ?Sized + Write + Seek> Seek for BufWriter<W> {
     /// Seek to the offset, in bytes, in the underlying writer.
     ///
@@ -669,7 +674,6 @@ impl<W: ?Sized + Write + Seek> Seek for BufWriter<W> {
     }
 }
 
-#[stable(feature = "rust1", since = "1.0.0")]
 impl<W: ?Sized + Write> Drop for BufWriter<W> {
     fn drop(&mut self) {
         if !self.panicked {

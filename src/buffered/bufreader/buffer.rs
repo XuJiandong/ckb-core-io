@@ -9,9 +9,9 @@
 //! that user code which wants to do reads from a `BufReader` via `buffer` + `consume` can do so
 //! without encountering any runtime bounds checks.
 
-use crate::cmp;
-use crate::io::{self, BorrowedBuf, Read};
-use crate::mem::MaybeUninit;
+use crate::{self, BorrowedBuf, Read};
+use core::cmp;
+use core::mem::MaybeUninit;
 
 pub struct Buffer {
     // The buffer.
@@ -33,7 +33,12 @@ impl Buffer {
     #[inline]
     pub fn with_capacity(capacity: usize) -> Self {
         let buf = Box::new_uninit_slice(capacity);
-        Self { buf, pos: 0, filled: 0, initialized: 0 }
+        Self {
+            buf,
+            pos: 0,
+            filled: 0,
+            initialized: 0,
+        }
     }
 
     #[inline]

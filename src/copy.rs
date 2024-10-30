@@ -1,9 +1,9 @@
 use super::{BorrowedBuf, BufReader, BufWriter, Read, Result, Write, DEFAULT_BUF_SIZE};
-use crate::alloc::Allocator;
-use crate::cmp;
-use crate::collections::VecDeque;
-use crate::io::IoSlice;
-use crate::mem::MaybeUninit;
+use crate::IoSlice;
+use alloc::collections::VecDeque;
+use core::alloc::Allocator;
+use core::cmp;
+use core::mem::MaybeUninit;
 
 #[cfg(test)]
 mod tests;
@@ -30,7 +30,7 @@ mod tests;
 ///
 /// [`read`]: Read::read
 /// [`write`]: Write::write
-/// [`ErrorKind::Interrupted`]: crate::io::ErrorKind::Interrupted
+/// [`ErrorKind::Interrupted`]: crate::ErrorKind::Interrupted
 ///
 /// # Examples
 ///
@@ -56,8 +56,8 @@ mod tests;
 ///
 /// Note that platform-specific behavior [may change in the future][changes].
 ///
-/// [changes]: crate::io#platform-specific-behavior
-#[stable(feature = "rust1", since = "1.0.0")]
+/// [changes]: crate#platform-specific-behavior
+
 pub fn copy<R: ?Sized, W: ?Sized>(reader: &mut R, writer: &mut W) -> Result<u64>
 where
     R: Read,
@@ -104,11 +104,11 @@ where
     T: ?Sized,
 {
     #[inline]
-    default fn buffer_size(&self) -> usize {
+    fn buffer_size(&self) -> usize {
         0
     }
 
-    default fn copy_to(&mut self, _to: &mut (impl Write + ?Sized)) -> Result<u64> {
+    fn copy_to(&mut self, _to: &mut (impl Write + ?Sized)) -> Result<u64> {
         unreachable!("only called from specializations")
     }
 }
@@ -194,11 +194,11 @@ trait BufferedWriterSpec: Write {
 
 impl<W: Write + ?Sized> BufferedWriterSpec for W {
     #[inline]
-    default fn buffer_size(&self) -> usize {
+    fn buffer_size(&self) -> usize {
         0
     }
 
-    default fn copy_from<R: Read + ?Sized>(&mut self, reader: &mut R) -> Result<u64> {
+    fn copy_from<R: Read + ?Sized>(&mut self, reader: &mut R) -> Result<u64> {
         stack_buffer_copy(reader, self)
     }
 }
@@ -261,7 +261,9 @@ impl BufferedWriterSpec for Vec<u8> {
     }
 
     fn copy_from<R: Read + ?Sized>(&mut self, reader: &mut R) -> Result<u64> {
-        reader.read_to_end(self).map(|bytes| u64::try_from(bytes).expect("usize overflowed u64"))
+        reader
+            .read_to_end(self)
+            .map(|bytes| u64::try_from(bytes).expect("usize overflowed u64"))
     }
 }
 

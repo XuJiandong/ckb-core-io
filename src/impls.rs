@@ -1,18 +1,17 @@
 #[cfg(test)]
 mod tests;
 
-use crate::alloc::Allocator;
-use crate::cmp;
-use crate::collections::VecDeque;
-use crate::fmt;
-use crate::io::{self, BorrowedCursor, BufRead, IoSlice, IoSliceMut, Read, Seek, SeekFrom, Write};
-use crate::mem;
-use crate::str;
+use crate::{self, BorrowedCursor, BufRead, IoSlice, IoSliceMut, Read, Seek, SeekFrom, Write};
+use alloc::collections::VecDeque;
+use alloc::fmt;
+use alloc::str;
+use core::alloc::Allocator;
+use core::cmp;
+use core::mem;
 
 // =============================================================================
 // Forwarding implementations
 
-#[stable(feature = "rust1", since = "1.0.0")]
 impl<R: Read + ?Sized> Read for &mut R {
     #[inline]
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
@@ -53,7 +52,7 @@ impl<R: Read + ?Sized> Read for &mut R {
         (**self).read_buf_exact(cursor)
     }
 }
-#[stable(feature = "rust1", since = "1.0.0")]
+
 impl<W: Write + ?Sized> Write for &mut W {
     #[inline]
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
@@ -85,7 +84,7 @@ impl<W: Write + ?Sized> Write for &mut W {
         (**self).write_fmt(fmt)
     }
 }
-#[stable(feature = "rust1", since = "1.0.0")]
+
 impl<S: Seek + ?Sized> Seek for &mut S {
     #[inline]
     fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
@@ -97,7 +96,7 @@ impl<S: Seek + ?Sized> Seek for &mut S {
         (**self).stream_position()
     }
 }
-#[stable(feature = "rust1", since = "1.0.0")]
+
 impl<B: BufRead + ?Sized> BufRead for &mut B {
     #[inline]
     fn fill_buf(&mut self) -> io::Result<&[u8]> {
@@ -120,7 +119,6 @@ impl<B: BufRead + ?Sized> BufRead for &mut B {
     }
 }
 
-#[stable(feature = "rust1", since = "1.0.0")]
 impl<R: Read + ?Sized> Read for Box<R> {
     #[inline]
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
@@ -161,7 +159,7 @@ impl<R: Read + ?Sized> Read for Box<R> {
         (**self).read_buf_exact(cursor)
     }
 }
-#[stable(feature = "rust1", since = "1.0.0")]
+
 impl<W: Write + ?Sized> Write for Box<W> {
     #[inline]
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
@@ -193,7 +191,7 @@ impl<W: Write + ?Sized> Write for Box<W> {
         (**self).write_fmt(fmt)
     }
 }
-#[stable(feature = "rust1", since = "1.0.0")]
+
 impl<S: Seek + ?Sized> Seek for Box<S> {
     #[inline]
     fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
@@ -205,7 +203,7 @@ impl<S: Seek + ?Sized> Seek for Box<S> {
         (**self).stream_position()
     }
 }
-#[stable(feature = "rust1", since = "1.0.0")]
+
 impl<B: BufRead + ?Sized> BufRead for Box<B> {
     #[inline]
     fn fill_buf(&mut self) -> io::Result<&[u8]> {
@@ -235,7 +233,7 @@ impl<B: BufRead + ?Sized> BufRead for Box<B> {
 ///
 /// Note that reading updates the slice to point to the yet unread part.
 /// The slice will be empty when EOF is reached.
-#[stable(feature = "rust1", since = "1.0.0")]
+
 impl Read for &[u8] {
     #[inline]
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
@@ -343,7 +341,6 @@ impl Read for &[u8] {
     }
 }
 
-#[stable(feature = "rust1", since = "1.0.0")]
 impl BufRead for &[u8] {
     #[inline]
     fn fill_buf(&mut self) -> io::Result<&[u8]> {
@@ -365,7 +362,7 @@ impl BufRead for &[u8] {
 /// If the number of bytes to be written exceeds the size of the slice, write operations will
 /// return short writes: ultimately, `Ok(0)`; in this situation, `write_all` returns an error of
 /// kind `ErrorKind::WriteZero`.
-#[stable(feature = "rust1", since = "1.0.0")]
+
 impl Write for &mut [u8] {
     #[inline]
     fn write(&mut self, data: &[u8]) -> io::Result<usize> {
@@ -396,7 +393,11 @@ impl Write for &mut [u8] {
 
     #[inline]
     fn write_all(&mut self, data: &[u8]) -> io::Result<()> {
-        if self.write(data)? == data.len() { Ok(()) } else { Err(io::Error::WRITE_ALL_EOF) }
+        if self.write(data)? == data.len() {
+            Ok(())
+        } else {
+            Err(io::Error::WRITE_ALL_EOF)
+        }
     }
 
     #[inline]
@@ -407,7 +408,7 @@ impl Write for &mut [u8] {
 
 /// Write is implemented for `Vec<u8>` by appending to the vector.
 /// The vector will grow as needed.
-#[stable(feature = "rust1", since = "1.0.0")]
+
 impl<A: Allocator> Write for Vec<u8, A> {
     #[inline]
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
@@ -443,7 +444,7 @@ impl<A: Allocator> Write for Vec<u8, A> {
 }
 
 /// Read is implemented for `VecDeque<u8>` by consuming bytes from the front of the `VecDeque`.
-#[stable(feature = "vecdeque_read_write", since = "1.63.0")]
+
 impl<A: Allocator> Read for VecDeque<u8, A> {
     /// Fill `buf` with the contents of the "front" slice as returned by
     /// [`as_slices`][`VecDeque::as_slices`]. If the contained byte slices of the `VecDeque` are
@@ -486,7 +487,7 @@ impl<A: Allocator> Read for VecDeque<u8, A> {
 }
 
 /// BufRead is implemented for `VecDeque<u8>` by reading bytes from the front of the `VecDeque`.
-#[stable(feature = "vecdeque_buf_read", since = "1.75.0")]
+
 impl<A: Allocator> BufRead for VecDeque<u8, A> {
     /// Returns the contents of the "front" slice as returned by
     /// [`as_slices`][`VecDeque::as_slices`]. If the contained byte slices of the `VecDeque` are
@@ -504,7 +505,7 @@ impl<A: Allocator> BufRead for VecDeque<u8, A> {
 }
 
 /// Write is implemented for `VecDeque<u8>` by appending to the `VecDeque`, growing it as needed.
-#[stable(feature = "vecdeque_read_write", since = "1.63.0")]
+
 impl<A: Allocator> Write for VecDeque<u8, A> {
     #[inline]
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
@@ -539,7 +540,6 @@ impl<A: Allocator> Write for VecDeque<u8, A> {
     }
 }
 
-#[unstable(feature = "read_buf", issue = "78485")]
 impl<'a> io::Write for core::io::BorrowedCursor<'a> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         let amt = cmp::min(buf.len(), self.capacity());

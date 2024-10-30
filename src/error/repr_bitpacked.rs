@@ -165,7 +165,10 @@ impl Repr {
         let res = Self(unsafe { NonNull::new_unchecked(tagged) }, PhantomData);
         // quickly smoke-check we encoded the right thing (This generally will
         // only run in std's tests, unless the user uses -Zbuild-std)
-        debug_assert!(matches!(res.data(), ErrorData::Custom(_)), "repr(custom) encoding failed");
+        debug_assert!(
+            matches!(res.data(), ErrorData::Custom(_)),
+            "repr(custom) encoding failed"
+        );
         res
     }
 
@@ -207,7 +210,10 @@ impl Repr {
     #[inline]
     pub(super) const fn new_simple_message(m: &'static SimpleMessage) -> Self {
         // Safety: References are never null.
-        Self(unsafe { NonNull::new_unchecked(m as *const _ as *mut ()) }, PhantomData)
+        Self(
+            unsafe { NonNull::new_unchecked(m as *const _ as *mut ()) },
+            PhantomData,
+        )
     }
 
     #[inline]
@@ -260,7 +266,11 @@ where
         TAG_SIMPLE => {
             let kind_bits = (bits >> 32) as u32;
             let kind = kind_from_prim(kind_bits).unwrap_or_else(|| {
-                debug_assert!(false, "Invalid io::error::Repr bits: `Repr({:#018x})`", bits);
+                debug_assert!(
+                    false,
+                    "Invalid io::error::Repr bits: `Repr({:#018x})`",
+                    bits
+                );
                 // This means the `ptr` passed in was not valid, which violates
                 // the unsafe contract of `decode_repr`.
                 //
