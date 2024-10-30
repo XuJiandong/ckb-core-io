@@ -44,9 +44,9 @@ local function process_content(content)
     content = content:gsub("crate::collections", "alloc::collections")
     content = content:gsub("crate::io", "crate")
     content = content:gsub("default fn", "fn")
-    content = content:gsub("crate::alloc::Allocator", "core::alloc::Allocator")
     content = content:gsub("crate::sys_common::io::DEFAULT_BUF_SIZE", "1024")
-
+    content = content:gsub("io::Result", "crate::Result")
+    content = content:gsub("io::Error", "crate::Error")
     return content
 end
 

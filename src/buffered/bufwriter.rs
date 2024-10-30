@@ -1,8 +1,9 @@
-use crate::error;
-use crate::ptr;
-use crate::{self, ErrorKind, IntoInnerError, IoSlice, Seek, SeekFrom, Write, DEFAULT_BUF_SIZE};
+use crate::error::Error;
+use crate::{IntoInnerError, Seek, SeekFrom, Write, DEFAULT_BUF_SIZE};
 use alloc::fmt;
+use core::error;
 use core::mem::{self, ManuallyDrop};
+use core::ptr;
 pub struct BufWriter<W: ?Sized + Write> {
     buf: Vec<u8>,
     panicked: bool,
@@ -38,10 +39,7 @@ impl<W: Write> BufWriter<W> {
     }
 }
 impl<W: ?Sized + Write> BufWriter<W> {
-    pub(crate) fn flush_buf(&mut self) -> io::Result<()> {
-        #[doc = " Helper struct to ensure the buffer is updated after all the writes"]
-        #[doc = " are complete. It tracks the number of written bytes and drains them"]
-        #[doc = " all from the front of the buffer when dropped."]
+    pub(crate) fn flush_buf(&mut self) -> crate::Result<()> {
         struct BufGuard<'a> {
             buffer: &'a mut Vec<u8>,
             written: usize,
@@ -50,15 +48,12 @@ impl<W: ?Sized + Write> BufWriter<W> {
             fn new(buffer: &'a mut Vec<u8>) -> Self {
                 Self { buffer, written: 0 }
             }
-            #[doc = " The unwritten part of the buffer"]
             fn remaining(&self) -> &[u8] {
                 &self.buffer[self.written..]
             }
-            #[doc = " Flag some bytes as removed from the front of the buffer"]
             fn consume(&mut self, amt: usize) {
                 self.written += amt;
             }
-            #[doc = " true if all of the bytes have been written"]
             fn done(&self) -> bool {
                 self.written >= self.buffer.len()
             }
@@ -77,10 +72,7 @@ impl<W: ?Sized + Write> BufWriter<W> {
             self.panicked = false;
             match r {
                 Ok(0) => {
-                    return Err(io::const_io_error!(
-                        ErrorKind::WriteZero,
-                        "failed to write the buffered data",
-                    ));
+                    return Err(Error::WriteZero);
                 }
                 Ok(n) => guard.consume(n),
                 Err(ref e) if e.is_interrupted() => {}
@@ -114,7 +106,7 @@ impl<W: ?Sized + Write> BufWriter<W> {
     }
     #[cold]
     #[inline(never)]
-    fn write_cold(&mut self, buf: &[u8]) -> io::Result<usize> {
+    fn write_cold(&mut self, buf: &[u8]) -> crate::Result<usize> {
         if buf.len() > self.spare_capacity() {
             self.flush_buf()?;
         }
@@ -132,7 +124,7 @@ impl<W: ?Sized + Write> BufWriter<W> {
     }
     #[cold]
     #[inline(never)]
-    fn write_all_cold(&mut self, buf: &[u8]) -> io::Result<()> {
+    fn write_all_cold(&mut self, buf: &[u8]) -> crate::Result<()> {
         if buf.len() > self.spare_capacity() {
             self.flush_buf()?;
         }
@@ -169,7 +161,6 @@ pub struct WriterPanicked {
     buf: Vec<u8>,
 }
 impl WriterPanicked {
-    #[must_use = "`self` will be dropped if the result is not used"]
     pub fn into_inner(self) -> Vec<u8> {
         self.buf
     }
@@ -199,7 +190,7 @@ impl fmt::Debug for WriterPanicked {
 }
 impl<W: ?Sized + Write> Write for BufWriter<W> {
     #[inline]
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+    fn write(&mut self, buf: &[u8]) -> crate::Result<usize> {
         if buf.len() < self.spare_capacity() {
             unsafe {
                 self.write_to_buffer_unchecked(buf);
@@ -210,7 +201,7 @@ impl<W: ?Sized + Write> Write for BufWriter<W> {
         }
     }
     #[inline]
-    fn write_all(&mut self, buf: &[u8]) -> io::Result<()> {
+    fn write_all(&mut self, buf: &[u8]) -> crate::Result<()> {
         if buf.len() < self.spare_capacity() {
             unsafe {
                 self.write_to_buffer_unchecked(buf);
@@ -220,63 +211,10 @@ impl<W: ?Sized + Write> Write for BufWriter<W> {
             self.write_all_cold(buf)
         }
     }
-    fn write_vectored(&mut self, bufs: &[IoSlice<'_>]) -> io::Result<usize> {
-        if self.get_ref().is_write_vectored() {
-            let mut saturated_total_len: usize = 0;
-            for buf in bufs {
-                saturated_total_len = saturated_total_len.saturating_add(buf.len());
-                if saturated_total_len > self.spare_capacity() && !self.buf.is_empty() {
-                    self.flush_buf()?;
-                }
-                if saturated_total_len >= self.buf.capacity() {
-                    self.panicked = true;
-                    let r = self.get_mut().write_vectored(bufs);
-                    self.panicked = false;
-                    return r;
-                }
-            }
-            unsafe {
-                bufs.iter().for_each(|b| self.write_to_buffer_unchecked(b));
-            };
-            Ok(saturated_total_len)
-        } else {
-            let mut iter = bufs.iter();
-            let mut total_written = if let Some(buf) = iter.by_ref().find(|&buf| !buf.is_empty()) {
-                if buf.len() > self.spare_capacity() {
-                    self.flush_buf()?;
-                }
-                if buf.len() >= self.buf.capacity() {
-                    self.panicked = true;
-                    let r = self.get_mut().write(buf);
-                    self.panicked = false;
-                    return r;
-                } else {
-                    unsafe {
-                        self.write_to_buffer_unchecked(buf);
-                    }
-                    buf.len()
-                }
-            } else {
-                return Ok(0);
-            };
-            debug_assert!(total_written != 0);
-            for buf in iter {
-                if buf.len() <= self.spare_capacity() {
-                    unsafe {
-                        self.write_to_buffer_unchecked(buf);
-                    }
-                    total_written += buf.len();
-                } else {
-                    break;
-                }
-            }
-            Ok(total_written)
-        }
-    }
     fn is_write_vectored(&self) -> bool {
         true
     }
-    fn flush(&mut self) -> io::Result<()> {
+    fn flush(&mut self) -> crate::Result<()> {
         self.flush_buf().and_then(|()| self.get_mut().flush())
     }
 }
@@ -295,7 +233,7 @@ where
     }
 }
 impl<W: ?Sized + Write + Seek> Seek for BufWriter<W> {
-    fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
+    fn seek(&mut self, pos: SeekFrom) -> crate::Result<u64> {
         self.flush_buf()?;
         self.get_mut().seek(pos)
     }

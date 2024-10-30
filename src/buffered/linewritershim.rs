@@ -1,5 +1,6 @@
-use crate::{self, BufWriter, IoSlice, Write};
-use core::slice::memchr;
+use crate::cherry_picking::memchr;
+use crate::{BufWriter, Write};
+
 #[derive(Debug)]
 pub struct LineWriterShim<'a, W: ?Sized + Write> {
     buffer: &'a mut BufWriter<W>,
@@ -17,7 +18,7 @@ impl<'a, W: ?Sized + Write> LineWriterShim<'a, W> {
     fn buffered(&self) -> &[u8] {
         self.buffer.buffer()
     }
-    fn flush_if_completed_line(&mut self) -> io::Result<()> {
+    fn flush_if_completed_line(&mut self) -> crate::Result<()> {
         match self.buffered().last().copied() {
             Some(b'\n') => self.buffer.flush_buf(),
             _ => Ok(()),
@@ -25,7 +26,7 @@ impl<'a, W: ?Sized + Write> LineWriterShim<'a, W> {
     }
 }
 impl<'a, W: ?Sized + Write> Write for LineWriterShim<'a, W> {
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+    fn write(&mut self, buf: &[u8]) -> crate::Result<usize> {
         let newline_idx = match memchr::memrchr(b'\n', buf) {
             None => {
                 self.flush_if_completed_line()?;
@@ -54,53 +55,13 @@ impl<'a, W: ?Sized + Write> Write for LineWriterShim<'a, W> {
         let buffered = self.buffer.write_to_buf(tail);
         Ok(flushed + buffered)
     }
-    fn flush(&mut self) -> io::Result<()> {
+    fn flush(&mut self) -> crate::Result<()> {
         self.buffer.flush()
-    }
-    fn write_vectored(&mut self, bufs: &[IoSlice<'_>]) -> io::Result<usize> {
-        if !self.is_write_vectored() {
-            return match bufs.iter().find(|buf| !buf.is_empty()) {
-                Some(buf) => self.write(buf),
-                None => Ok(0),
-            };
-        }
-        let last_newline_buf_idx = bufs
-            .iter()
-            .enumerate()
-            .rev()
-            .find_map(|(i, buf)| memchr::memchr(b'\n', buf).map(|_| i));
-        let last_newline_buf_idx = match last_newline_buf_idx {
-            None => {
-                self.flush_if_completed_line()?;
-                return self.buffer.write_vectored(bufs);
-            }
-            Some(i) => i,
-        };
-        self.buffer.flush_buf()?;
-        let (lines, tail) = bufs.split_at(last_newline_buf_idx + 1);
-        let flushed = self.inner_mut().write_vectored(lines)?;
-        if flushed == 0 {
-            return Ok(0);
-        }
-        let mut lines_len: usize = 0;
-        for buf in lines {
-            lines_len = lines_len.saturating_add(buf.len());
-            if flushed < lines_len {
-                return Ok(flushed);
-            }
-        }
-        let buffered: usize = tail
-            .iter()
-            .filter(|buf| !buf.is_empty())
-            .map(|buf| self.buffer.write_to_buf(buf))
-            .take_while(|&n| n > 0)
-            .sum();
-        Ok(flushed + buffered)
     }
     fn is_write_vectored(&self) -> bool {
         self.inner().is_write_vectored()
     }
-    fn write_all(&mut self, buf: &[u8]) -> io::Result<()> {
+    fn write_all(&mut self, buf: &[u8]) -> crate::Result<()> {
         match memchr::memrchr(b'\n', buf) {
             None => {
                 self.flush_if_completed_line()?;

@@ -1,7 +1,7 @@
 mod buffer;
 use crate::{
-    self, uninlined_slow_read_byte, BorrowedCursor, BufRead, IoSliceMut, Read, Seek, SeekFrom,
-    SizeHint, SpecReadByte, DEFAULT_BUF_SIZE,
+    uninlined_slow_read_byte, BorrowedCursor, BufRead, Read, Seek, SeekFrom, SizeHint,
+    SpecReadByte, DEFAULT_BUF_SIZE,
 };
 use alloc::fmt;
 use buffer::Buffer;
@@ -51,7 +51,7 @@ impl<R: ?Sized> BufReader<R> {
     }
 }
 impl<R: ?Sized + Seek> BufReader<R> {
-    pub fn seek_relative(&mut self, offset: i64) -> io::Result<()> {
+    pub fn seek_relative(&mut self, offset: i64) -> crate::Result<()> {
         let pos = self.buf.pos() as u64;
         if offset < 0 {
             if let Some(_) = pos.checked_sub((-offset) as u64) {
@@ -72,7 +72,7 @@ where
     Self: Read,
 {
     #[inline]
-    fn spec_read_byte(&mut self) -> Option<io::Result<u8>> {
+    fn spec_read_byte(&mut self) -> Option<crate::Result<u8>> {
         let mut byte = 0;
         if self.buf.consume_with(1, |claimed| byte = claimed[0]) {
             return Some(Ok(byte));
@@ -81,7 +81,7 @@ where
     }
 }
 impl<R: ?Sized + Read> Read for BufReader<R> {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+    fn read(&mut self, buf: &mut [u8]) -> crate::Result<usize> {
         if self.buf.pos() == self.buf.filled() && buf.len() >= self.capacity() {
             self.discard_buffer();
             return self.inner.read(buf);
@@ -91,7 +91,7 @@ impl<R: ?Sized + Read> Read for BufReader<R> {
         self.consume(nread);
         Ok(nread)
     }
-    fn read_buf(&mut self, mut cursor: BorrowedCursor<'_>) -> io::Result<()> {
+    fn read_buf(&mut self, mut cursor: BorrowedCursor<'_>) -> crate::Result<()> {
         if self.buf.pos() == self.buf.filled() && cursor.capacity() >= self.capacity() {
             self.discard_buffer();
             return self.inner.read_buf(cursor);
@@ -102,7 +102,7 @@ impl<R: ?Sized + Read> Read for BufReader<R> {
         self.consume(cursor.written() - prev);
         Ok(())
     }
-    fn read_exact(&mut self, buf: &mut [u8]) -> io::Result<()> {
+    fn read_exact(&mut self, buf: &mut [u8]) -> crate::Result<()> {
         if self
             .buf
             .consume_with(buf.len(), |claimed| buf.copy_from_slice(claimed))
@@ -111,7 +111,7 @@ impl<R: ?Sized + Read> Read for BufReader<R> {
         }
         crate::default_read_exact(self, buf)
     }
-    fn read_buf_exact(&mut self, mut cursor: BorrowedCursor<'_>) -> io::Result<()> {
+    fn read_buf_exact(&mut self, mut cursor: BorrowedCursor<'_>) -> crate::Result<()> {
         if self
             .buf
             .consume_with(cursor.capacity(), |claimed| cursor.append(claimed))
@@ -120,21 +120,7 @@ impl<R: ?Sized + Read> Read for BufReader<R> {
         }
         crate::default_read_buf_exact(self, cursor)
     }
-    fn read_vectored(&mut self, bufs: &mut [IoSliceMut<'_>]) -> io::Result<usize> {
-        let total_len = bufs.iter().map(|b| b.len()).sum::<usize>();
-        if self.buf.pos() == self.buf.filled() && total_len >= self.capacity() {
-            self.discard_buffer();
-            return self.inner.read_vectored(bufs);
-        }
-        let mut rem = self.fill_buf()?;
-        let nread = rem.read_vectored(bufs)?;
-        self.consume(nread);
-        Ok(nread)
-    }
-    fn is_read_vectored(&self) -> bool {
-        self.inner.is_read_vectored()
-    }
-    fn read_to_end(&mut self, buf: &mut Vec<u8>) -> io::Result<usize> {
+    fn read_to_end(&mut self, buf: &mut Vec<u8>) -> crate::Result<usize> {
         let inner_buf = self.buffer();
         buf.try_reserve(inner_buf.len())?;
         buf.extend_from_slice(inner_buf);
@@ -142,20 +128,20 @@ impl<R: ?Sized + Read> Read for BufReader<R> {
         self.discard_buffer();
         Ok(nread + self.inner.read_to_end(buf)?)
     }
-    fn read_to_string(&mut self, buf: &mut String) -> io::Result<usize> {
+    fn read_to_string(&mut self, buf: &mut String) -> crate::Result<usize> {
         if buf.is_empty() {
             unsafe { crate::append_to_string(buf, |b| self.read_to_end(b)) }
         } else {
             let mut bytes = Vec::new();
             self.read_to_end(&mut bytes)?;
-            let string = alloc::str::from_utf8(&bytes).map_err(|_| io::Error::INVALID_UTF8)?;
+            let string = alloc::str::from_utf8(&bytes).map_err(|_| crate::Error::INVALID_UTF8)?;
             *buf += string;
             Ok(string.len())
         }
     }
 }
 impl<R: ?Sized + Read> BufRead for BufReader<R> {
-    fn fill_buf(&mut self) -> io::Result<&[u8]> {
+    fn fill_buf(&mut self) -> crate::Result<&[u8]> {
         self.buf.fill_buf(&mut self.inner)
     }
     fn consume(&mut self, amt: usize) {
@@ -177,7 +163,7 @@ where
     }
 }
 impl<R: ?Sized + Seek> Seek for BufReader<R> {
-    fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
+    fn seek(&mut self, pos: SeekFrom) -> crate::Result<u64> {
         let result: u64;
         if let SeekFrom::Current(n) = pos {
             let remainder = (self.buf.filled() - self.buf.pos()) as i64;
@@ -194,7 +180,7 @@ impl<R: ?Sized + Seek> Seek for BufReader<R> {
         self.discard_buffer();
         Ok(result)
     }
-    fn stream_position(&mut self) -> io::Result<u64> {
+    fn stream_position(&mut self) -> crate::Result<u64> {
         let remainder = (self.buf.filled() - self.buf.pos()) as u64;
         self.inner.stream_position().map(|pos| {
             pos.checked_sub(remainder).expect(
@@ -202,7 +188,7 @@ impl<R: ?Sized + Seek> Seek for BufReader<R> {
             )
         })
     }
-    fn seek_relative(&mut self, offset: i64) -> io::Result<()> {
+    fn seek_relative(&mut self, offset: i64) -> crate::Result<()> {
         self.seek_relative(offset)
     }
 }

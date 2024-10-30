@@ -1,7 +1,6 @@
 use super::{BorrowedBuf, BufReader, BufWriter, Read, Result, Write, DEFAULT_BUF_SIZE};
 use crate::IoSlice;
 use alloc::collections::VecDeque;
-use core::alloc::Allocator;
 use core::cmp;
 use core::mem::MaybeUninit;
 pub fn copy<R: ?Sized, W: ?Sized>(reader: &mut R, writer: &mut W) -> Result<u64>
@@ -9,7 +8,7 @@ where
     R: Read,
     W: Write,
 {
-    cfg_if::cfg_if! { if # [cfg (any (target_os = "linux" , target_os = "android"))] { crate :: sys :: kernel_copy :: copy_spec (reader , writer) } else { generic_copy (reader , writer) } }
+    generic_copy(reader, writer)
 }
 pub(crate) fn generic_copy<R: ?Sized, W: ?Sized>(reader: &mut R, writer: &mut W) -> Result<u64>
 where
@@ -51,7 +50,7 @@ impl BufferedReaderSpec for &[u8] {
         Ok(len as u64)
     }
 }
-impl<A: Allocator> BufferedReaderSpec for VecDeque<u8, A> {
+impl BufferedReaderSpec for VecDeque<u8> {
     fn buffer_size(&self) -> usize {
         usize::MAX
     }
@@ -64,6 +63,7 @@ impl<A: Allocator> BufferedReaderSpec for VecDeque<u8, A> {
         Ok(len as u64)
     }
 }
+
 impl<I> BufferedReaderSpec for BufReader<I>
 where
     Self: Read,

@@ -1,4 +1,4 @@
-use crate::{self, buffered::LineWriterShim, BufWriter, IntoInnerError, IoSlice, Write};
+use crate::{buffered::LineWriterShim, BufWriter, IntoInnerError, Write};
 use alloc::fmt;
 pub struct LineWriter<W: ?Sized + Write> {
     inner: BufWriter<W>,
@@ -27,25 +27,19 @@ impl<W: ?Sized + Write> LineWriter<W> {
     }
 }
 impl<W: ?Sized + Write> Write for LineWriter<W> {
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+    fn write(&mut self, buf: &[u8]) -> crate::Result<usize> {
         LineWriterShim::new(&mut self.inner).write(buf)
     }
-    fn flush(&mut self) -> io::Result<()> {
+    fn flush(&mut self) -> crate::Result<()> {
         self.inner.flush()
-    }
-    fn write_vectored(&mut self, bufs: &[IoSlice<'_>]) -> io::Result<usize> {
-        LineWriterShim::new(&mut self.inner).write_vectored(bufs)
     }
     fn is_write_vectored(&self) -> bool {
         self.inner.is_write_vectored()
     }
-    fn write_all(&mut self, buf: &[u8]) -> io::Result<()> {
+    fn write_all(&mut self, buf: &[u8]) -> crate::Result<()> {
         LineWriterShim::new(&mut self.inner).write_all(buf)
     }
-    fn write_all_vectored(&mut self, bufs: &mut [IoSlice<'_>]) -> io::Result<()> {
-        LineWriterShim::new(&mut self.inner).write_all_vectored(bufs)
-    }
-    fn write_fmt(&mut self, fmt: fmt::Arguments<'_>) -> io::Result<()> {
+    fn write_fmt(&mut self, fmt: fmt::Arguments<'_>) -> crate::Result<()> {
         LineWriterShim::new(&mut self.inner).write_fmt(fmt)
     }
 }

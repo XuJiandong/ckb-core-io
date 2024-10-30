@@ -1,6 +1,5 @@
 use crate::prelude::*;
-use crate::{self, BorrowedCursor, ErrorKind, IoSlice, IoSliceMut, SeekFrom};
-use core::alloc::Allocator;
+use crate::{self, BorrowedCursor, IoSlice, IoSliceMut, SeekFrom};
 use core::cmp;
 #[derive(Debug, Default, Eq, PartialEq)]
 pub struct Cursor<T> {
@@ -56,11 +55,11 @@ where
         self.pos = other.pos;
     }
 }
-impl<T> io::Seek for Cursor<T>
+impl<T> crate::Seek for Cursor<T>
 where
     T: AsRef<[u8]>,
 {
-    fn seek(&mut self, style: SeekFrom) -> io::Result<u64> {
+    fn seek(&mut self, style: SeekFrom) -> crate::Result<u64> {
         let (base_pos, offset) = match style {
             SeekFrom::Start(n) => {
                 self.pos = n;
@@ -80,10 +79,10 @@ where
             )),
         }
     }
-    fn stream_len(&mut self) -> io::Result<u64> {
+    fn stream_len(&mut self) -> crate::Result<u64> {
         Ok(self.inner.as_ref().len() as u64)
     }
-    fn stream_position(&mut self) -> io::Result<u64> {
+    fn stream_position(&mut self) -> crate::Result<u64> {
         Ok(self.pos)
     }
 }
@@ -91,18 +90,18 @@ impl<T> Read for Cursor<T>
 where
     T: AsRef<[u8]>,
 {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+    fn read(&mut self, buf: &mut [u8]) -> crate::Result<usize> {
         let n = Read::read(&mut self.remaining_slice(), buf)?;
         self.pos += n as u64;
         Ok(n)
     }
-    fn read_buf(&mut self, mut cursor: BorrowedCursor<'_>) -> io::Result<()> {
+    fn read_buf(&mut self, mut cursor: BorrowedCursor<'_>) -> crate::Result<()> {
         let prev_written = cursor.written();
         Read::read_buf(&mut self.remaining_slice(), cursor.reborrow())?;
         self.pos += (cursor.written() - prev_written) as u64;
         Ok(())
     }
-    fn read_vectored(&mut self, bufs: &mut [IoSliceMut<'_>]) -> io::Result<usize> {
+    fn read_vectored(&mut self, bufs: &mut [IoSliceMut<'_>]) -> crate::Result<usize> {
         let mut nread = 0;
         for buf in bufs {
             let n = self.read(buf)?;
@@ -116,7 +115,7 @@ where
     fn is_read_vectored(&self) -> bool {
         true
     }
-    fn read_exact(&mut self, buf: &mut [u8]) -> io::Result<()> {
+    fn read_exact(&mut self, buf: &mut [u8]) -> crate::Result<()> {
         let result = Read::read_exact(&mut self.remaining_slice(), buf);
         match result {
             Ok(_) => self.pos += buf.len() as u64,
@@ -124,13 +123,13 @@ where
         }
         result
     }
-    fn read_buf_exact(&mut self, mut cursor: BorrowedCursor<'_>) -> io::Result<()> {
+    fn read_buf_exact(&mut self, mut cursor: BorrowedCursor<'_>) -> crate::Result<()> {
         let prev_written = cursor.written();
         let result = Read::read_buf_exact(&mut self.remaining_slice(), cursor.reborrow());
         self.pos += (cursor.written() - prev_written) as u64;
         result
     }
-    fn read_to_end(&mut self, buf: &mut Vec<u8>) -> io::Result<usize> {
+    fn read_to_end(&mut self, buf: &mut Vec<u8>) -> crate::Result<usize> {
         let content = self.remaining_slice();
         let len = content.len();
         buf.try_reserve(len)?;
@@ -138,9 +137,9 @@ where
         self.pos += len as u64;
         Ok(len)
     }
-    fn read_to_string(&mut self, buf: &mut String) -> io::Result<usize> {
-        let content =
-            alloc::str::from_utf8(self.remaining_slice()).map_err(|_| io::Error::INVALID_UTF8)?;
+    fn read_to_string(&mut self, buf: &mut String) -> crate::Result<usize> {
+        let content = alloc::str::from_utf8(self.remaining_slice())
+            .map_err(|_| crate::Error::INVALID_UTF8)?;
         let len = content.len();
         buf.try_reserve(len)?;
         buf.push_str(content);
@@ -152,7 +151,7 @@ impl<T> BufRead for Cursor<T>
 where
     T: AsRef<[u8]>,
 {
-    fn fill_buf(&mut self) -> io::Result<&[u8]> {
+    fn fill_buf(&mut self) -> crate::Result<&[u8]> {
         Ok(self.remaining_slice())
     }
     fn consume(&mut self, amt: usize) {
@@ -160,7 +159,7 @@ where
     }
 }
 #[inline]
-fn slice_write(pos_mut: &mut u64, slice: &mut [u8], buf: &[u8]) -> io::Result<usize> {
+fn slice_write(pos_mut: &mut u64, slice: &mut [u8], buf: &[u8]) -> crate::Result<usize> {
     let pos = cmp::min(*pos_mut, slice.len() as u64);
     let amt = (&mut slice[(pos as usize)..]).write(buf)?;
     *pos_mut += amt as u64;
@@ -171,7 +170,7 @@ fn slice_write_vectored(
     pos_mut: &mut u64,
     slice: &mut [u8],
     bufs: &[IoSlice<'_>],
-) -> io::Result<usize> {
+) -> crate::Result<usize> {
     let mut nwritten = 0;
     for buf in bufs {
         let n = slice_write(pos_mut, slice, buf)?;
@@ -182,11 +181,7 @@ fn slice_write_vectored(
     }
     Ok(nwritten)
 }
-fn reserve_and_pad<A: Allocator>(
-    pos_mut: &mut u64,
-    vec: &mut Vec<u8, A>,
-    buf_len: usize,
-) -> io::Result<usize> {
+fn reserve_and_pad(pos_mut: &mut u64, vec: &mut Vec<u8>, buf_len: usize) -> crate::Result<usize> {
     let pos: usize = (*pos_mut).try_into().map_err(|_| {
         io::const_io_error!(
             ErrorKind::InvalidInput,
@@ -210,18 +205,13 @@ fn reserve_and_pad<A: Allocator>(
     }
     Ok(pos)
 }
-unsafe fn vec_write_unchecked<A>(pos: usize, vec: &mut Vec<u8, A>, buf: &[u8]) -> usize
-where
-    A: Allocator,
-{
+unsafe fn vec_write_unchecked<A>(pos: usize, vec: &mut Vec<u8>, buf: &[u8]) -> usize {
     debug_assert!(vec.capacity() >= pos + buf.len());
     unsafe { vec.as_mut_ptr().add(pos).copy_from(buf.as_ptr(), buf.len()) };
     pos + buf.len()
 }
-fn vec_write<A>(pos_mut: &mut u64, vec: &mut Vec<u8, A>, buf: &[u8]) -> io::Result<usize>
-where
-    A: Allocator,
-{
+
+fn vec_write(pos_mut: &mut u64, vec: &mut Vec<u8>, buf: &[u8]) -> crate::Result<usize> {
     let buf_len = buf.len();
     let mut pos = reserve_and_pad(pos_mut, vec, buf_len)?;
     unsafe {
@@ -233,14 +223,11 @@ where
     *pos_mut += buf_len as u64;
     Ok(buf_len)
 }
-fn vec_write_vectored<A>(
+fn vec_write_vectored(
     pos_mut: &mut u64,
-    vec: &mut Vec<u8, A>,
+    vec: &mut Vec<u8>,
     bufs: &[IoSlice<'_>],
-) -> io::Result<usize>
-where
-    A: Allocator,
-{
+) -> crate::Result<usize> {
     let buf_len = bufs.iter().fold(0usize, |a, b| a.saturating_add(b.len()));
     let mut pos = reserve_and_pad(pos_mut, vec, buf_len)?;
     unsafe {
@@ -256,11 +243,11 @@ where
 }
 impl Write for Cursor<&mut [u8]> {
     #[inline]
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+    fn write(&mut self, buf: &[u8]) -> crate::Result<usize> {
         slice_write(&mut self.pos, self.inner, buf)
     }
     #[inline]
-    fn write_vectored(&mut self, bufs: &[IoSlice<'_>]) -> io::Result<usize> {
+    fn write_vectored(&mut self, bufs: &[IoSlice<'_>]) -> crate::Result<usize> {
         slice_write_vectored(&mut self.pos, self.inner, bufs)
     }
     #[inline]
@@ -268,18 +255,15 @@ impl Write for Cursor<&mut [u8]> {
         true
     }
     #[inline]
-    fn flush(&mut self) -> io::Result<()> {
+    fn flush(&mut self) -> crate::Result<()> {
         Ok(())
     }
 }
-impl<A> Write for Cursor<&mut Vec<u8, A>>
-where
-    A: Allocator,
-{
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+impl Write for Cursor<&mut Vec<u8>> {
+    fn write(&mut self, buf: &[u8]) -> crate::Result<usize> {
         vec_write(&mut self.pos, self.inner, buf)
     }
-    fn write_vectored(&mut self, bufs: &[IoSlice<'_>]) -> io::Result<usize> {
+    fn write_vectored(&mut self, bufs: &[IoSlice<'_>]) -> crate::Result<usize> {
         vec_write_vectored(&mut self.pos, self.inner, bufs)
     }
     #[inline]
@@ -287,7 +271,7 @@ where
         true
     }
     #[inline]
-    fn flush(&mut self) -> io::Result<()> {
+    fn flush(&mut self) -> crate::Result<()> {
         Ok(())
     }
 }
@@ -295,10 +279,10 @@ impl<A> Write for Cursor<Vec<u8, A>>
 where
     A: Allocator,
 {
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+    fn write(&mut self, buf: &[u8]) -> crate::Result<usize> {
         vec_write(&mut self.pos, &mut self.inner, buf)
     }
-    fn write_vectored(&mut self, bufs: &[IoSlice<'_>]) -> io::Result<usize> {
+    fn write_vectored(&mut self, bufs: &[IoSlice<'_>]) -> crate::Result<usize> {
         vec_write_vectored(&mut self.pos, &mut self.inner, bufs)
     }
     #[inline]
@@ -306,20 +290,17 @@ where
         true
     }
     #[inline]
-    fn flush(&mut self) -> io::Result<()> {
+    fn flush(&mut self) -> crate::Result<()> {
         Ok(())
     }
 }
-impl<A> Write for Cursor<Box<[u8], A>>
-where
-    A: Allocator,
-{
+impl Write for Cursor<Box<[u8]>> {
     #[inline]
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+    fn write(&mut self, buf: &[u8]) -> crate::Result<usize> {
         slice_write(&mut self.pos, &mut self.inner, buf)
     }
     #[inline]
-    fn write_vectored(&mut self, bufs: &[IoSlice<'_>]) -> io::Result<usize> {
+    fn write_vectored(&mut self, bufs: &[IoSlice<'_>]) -> crate::Result<usize> {
         slice_write_vectored(&mut self.pos, &mut self.inner, bufs)
     }
     #[inline]
@@ -327,17 +308,17 @@ where
         true
     }
     #[inline]
-    fn flush(&mut self) -> io::Result<()> {
+    fn flush(&mut self) -> crate::Result<()> {
         Ok(())
     }
 }
 impl<const N: usize> Write for Cursor<[u8; N]> {
     #[inline]
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+    fn write(&mut self, buf: &[u8]) -> crate::Result<usize> {
         slice_write(&mut self.pos, &mut self.inner, buf)
     }
     #[inline]
-    fn write_vectored(&mut self, bufs: &[IoSlice<'_>]) -> io::Result<usize> {
+    fn write_vectored(&mut self, bufs: &[IoSlice<'_>]) -> crate::Result<usize> {
         slice_write_vectored(&mut self.pos, &mut self.inner, bufs)
     }
     #[inline]
@@ -345,7 +326,7 @@ impl<const N: usize> Write for Cursor<[u8; N]> {
         true
     }
     #[inline]
-    fn flush(&mut self) -> io::Result<()> {
+    fn flush(&mut self) -> crate::Result<()> {
         Ok(())
     }
 }

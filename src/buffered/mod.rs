@@ -36,7 +36,7 @@ impl<W> From<IntoInnerError<W>> for Error {
         iie.1
     }
 }
-impl<W: Send + fmt::Debug> error::Error for IntoInnerError<W> {
+impl<W: Send + fmt::Debug> core::error::Error for IntoInnerError<W> {
     #[allow(deprecated, deprecated_in_future)]
     fn description(&self) -> &str {
         error::Error::description(self.error())

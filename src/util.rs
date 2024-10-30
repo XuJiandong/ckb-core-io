@@ -1,7 +1,4 @@
-#![allow(missing_copy_implementations)]
-use crate::{
-    self, BorrowedCursor, BufRead, IoSlice, IoSliceMut, Read, Seek, SeekFrom, SizeHint, Write,
-};
+use crate::{BorrowedCursor, BufRead, Read, Seek, SeekFrom, SizeHint, Write};
 use alloc::fmt;
 #[non_exhaustive]
 #[derive(Copy, Clone, Debug, Default)]
@@ -12,30 +9,30 @@ pub const fn empty() -> Empty {
 }
 impl Read for Empty {
     #[inline]
-    fn read(&mut self, _buf: &mut [u8]) -> io::Result<usize> {
+    fn read(&mut self, _buf: &mut [u8]) -> crate::Result<usize> {
         Ok(0)
     }
     #[inline]
-    fn read_buf(&mut self, _cursor: BorrowedCursor<'_>) -> io::Result<()> {
+    fn read_buf(&mut self, _cursor: BorrowedCursor<'_>) -> crate::Result<()> {
         Ok(())
     }
 }
 impl BufRead for Empty {
     #[inline]
-    fn fill_buf(&mut self) -> io::Result<&[u8]> {
+    fn fill_buf(&mut self) -> crate::Result<&[u8]> {
         Ok(&[])
     }
     #[inline]
     fn consume(&mut self, _n: usize) {}
 }
 impl Seek for Empty {
-    fn seek(&mut self, _pos: SeekFrom) -> io::Result<u64> {
+    fn seek(&mut self, _pos: SeekFrom) -> crate::Result<u64> {
         Ok(0)
     }
-    fn stream_len(&mut self) -> io::Result<u64> {
+    fn stream_len(&mut self) -> crate::Result<u64> {
         Ok(0)
     }
-    fn stream_position(&mut self) -> io::Result<u64> {
+    fn stream_position(&mut self) -> crate::Result<u64> {
         Ok(0)
     }
 }
@@ -47,39 +44,29 @@ impl SizeHint for Empty {
 }
 impl Write for Empty {
     #[inline]
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+    fn write(&mut self, buf: &[u8]) -> crate::Result<usize> {
         Ok(buf.len())
-    }
-    #[inline]
-    fn write_vectored(&mut self, bufs: &[IoSlice<'_>]) -> io::Result<usize> {
-        let total_len = bufs.iter().map(|b| b.len()).sum();
-        Ok(total_len)
     }
     #[inline]
     fn is_write_vectored(&self) -> bool {
         true
     }
     #[inline]
-    fn flush(&mut self) -> io::Result<()> {
+    fn flush(&mut self) -> crate::Result<()> {
         Ok(())
     }
 }
 impl Write for &Empty {
     #[inline]
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+    fn write(&mut self, buf: &[u8]) -> crate::Result<usize> {
         Ok(buf.len())
-    }
-    #[inline]
-    fn write_vectored(&mut self, bufs: &[IoSlice<'_>]) -> io::Result<usize> {
-        let total_len = bufs.iter().map(|b| b.len()).sum();
-        Ok(total_len)
     }
     #[inline]
     fn is_write_vectored(&self) -> bool {
         true
     }
     #[inline]
-    fn flush(&mut self) -> io::Result<()> {
+    fn flush(&mut self) -> crate::Result<()> {
         Ok(())
     }
 }
@@ -92,13 +79,13 @@ pub const fn repeat(byte: u8) -> Repeat {
 }
 impl Read for Repeat {
     #[inline]
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+    fn read(&mut self, buf: &mut [u8]) -> crate::Result<usize> {
         for slot in &mut *buf {
             *slot = self.byte;
         }
         Ok(buf.len())
     }
-    fn read_buf(&mut self, mut buf: BorrowedCursor<'_>) -> io::Result<()> {
+    fn read_buf(&mut self, mut buf: BorrowedCursor<'_>) -> crate::Result<()> {
         for slot in unsafe { buf.as_mut() } {
             slot.write(self.byte);
         }
@@ -108,23 +95,11 @@ impl Read for Repeat {
         }
         Ok(())
     }
-    fn read_to_end(&mut self, _: &mut Vec<u8>) -> io::Result<usize> {
-        Err(io::Error::from(io::ErrorKind::OutOfMemory))
+    fn read_to_end(&mut self, _: &mut Vec<u8>) -> crate::Result<usize> {
+        Err(crate::Error::from(crate::Error::OutOfMemory))
     }
-    fn read_to_string(&mut self, _: &mut String) -> io::Result<usize> {
-        Err(io::Error::from(io::ErrorKind::OutOfMemory))
-    }
-    #[inline]
-    fn read_vectored(&mut self, bufs: &mut [IoSliceMut<'_>]) -> io::Result<usize> {
-        let mut nwritten = 0;
-        for buf in bufs {
-            nwritten += self.read(buf)?;
-        }
-        Ok(nwritten)
-    }
-    #[inline]
-    fn is_read_vectored(&self) -> bool {
-        true
+    fn read_to_string(&mut self, _: &mut String) -> crate::Result<usize> {
+        Err(crate::Error::from(crate::Error::OutOfMemory))
     }
 }
 impl SizeHint for Repeat {
@@ -151,39 +126,29 @@ pub const fn sink() -> Sink {
 }
 impl Write for Sink {
     #[inline]
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+    fn write(&mut self, buf: &[u8]) -> crate::Result<usize> {
         Ok(buf.len())
-    }
-    #[inline]
-    fn write_vectored(&mut self, bufs: &[IoSlice<'_>]) -> io::Result<usize> {
-        let total_len = bufs.iter().map(|b| b.len()).sum();
-        Ok(total_len)
     }
     #[inline]
     fn is_write_vectored(&self) -> bool {
         true
     }
     #[inline]
-    fn flush(&mut self) -> io::Result<()> {
+    fn flush(&mut self) -> crate::Result<()> {
         Ok(())
     }
 }
 impl Write for &Sink {
     #[inline]
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+    fn write(&mut self, buf: &[u8]) -> crate::Result<usize> {
         Ok(buf.len())
-    }
-    #[inline]
-    fn write_vectored(&mut self, bufs: &[IoSlice<'_>]) -> io::Result<usize> {
-        let total_len = bufs.iter().map(|b| b.len()).sum();
-        Ok(total_len)
     }
     #[inline]
     fn is_write_vectored(&self) -> bool {
         true
     }
     #[inline]
-    fn flush(&mut self) -> io::Result<()> {
+    fn flush(&mut self) -> crate::Result<()> {
         Ok(())
     }
 }

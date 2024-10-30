@@ -1,22 +1,21 @@
 extern crate alloc;
+mod cherry_picking;
+
 pub use self::buffered::WriterPanicked;
-pub use self::error::RawOsError;
 pub use self::{
     buffered::{BufReader, BufWriter, IntoInnerError, LineWriter},
     copy::copy,
     cursor::Cursor,
-    error::{Error, ErrorKind, Result},
+    error::{Error, Result},
     util::{empty, repeat, sink, Empty, Repeat, Sink},
 };
+pub use crate::cherry_picking::borrowed_buf::{BorrowedBuf, BorrowedCursor};
 use alloc::fmt;
 use alloc::str;
+use cherry_picking::memchr;
 use core::cmp;
-pub use core::io::{BorrowedBuf, BorrowedCursor};
 use core::mem::take;
 use core::ops::{Deref, DerefMut};
-use core::slice;
-use core::slice::memchr;
-pub(crate) use error::const_io_error;
 mod buffered;
 pub(crate) mod copy;
 mod cursor;
@@ -261,111 +260,8 @@ pub fn read_to_string<R: Read>(mut reader: R) -> Result<String> {
     reader.read_to_string(&mut buf)?;
     Ok(buf)
 }
-#[repr(transparent)]
-pub struct IoSliceMut<'a>(sys::io::IoSliceMut<'a>);
-unsafe impl<'a> Send for IoSliceMut<'a> {}
-unsafe impl<'a> Sync for IoSliceMut<'a> {}
-impl<'a> fmt::Debug for IoSliceMut<'a> {
-    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Debug::fmt(self.0.as_slice(), fmt)
-    }
-}
-impl<'a> IoSliceMut<'a> {
-    #[inline]
-    pub fn new(buf: &'a mut [u8]) -> IoSliceMut<'a> {
-        IoSliceMut(sys::io::IoSliceMut::new(buf))
-    }
-    #[inline]
-    pub fn advance(&mut self, n: usize) {
-        self.0.advance(n)
-    }
-    #[inline]
-    pub fn advance_slices(bufs: &mut &mut [IoSliceMut<'a>], n: usize) {
-        let mut remove = 0;
-        let mut left = n;
-        for buf in bufs.iter() {
-            if let Some(remainder) = left.checked_sub(buf.len()) {
-                left = remainder;
-                remove += 1;
-            } else {
-                break;
-            }
-        }
-        *bufs = &mut take(bufs)[remove..];
-        if bufs.is_empty() {
-            assert!(left == 0, "advancing io slices beyond their length");
-        } else {
-            bufs[0].advance(left);
-        }
-    }
-}
-impl<'a> Deref for IoSliceMut<'a> {
-    type Target = [u8];
-    #[inline]
-    fn deref(&self) -> &[u8] {
-        self.0.as_slice()
-    }
-}
-impl<'a> DerefMut for IoSliceMut<'a> {
-    #[inline]
-    fn deref_mut(&mut self) -> &mut [u8] {
-        self.0.as_mut_slice()
-    }
-}
-#[derive(Copy, Clone)]
-#[repr(transparent)]
-pub struct IoSlice<'a>(sys::io::IoSlice<'a>);
-unsafe impl<'a> Send for IoSlice<'a> {}
-unsafe impl<'a> Sync for IoSlice<'a> {}
-impl<'a> fmt::Debug for IoSlice<'a> {
-    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Debug::fmt(self.0.as_slice(), fmt)
-    }
-}
-impl<'a> IoSlice<'a> {
-    #[must_use]
-    #[inline]
-    pub fn new(buf: &'a [u8]) -> IoSlice<'a> {
-        IoSlice(sys::io::IoSlice::new(buf))
-    }
-    #[inline]
-    pub fn advance(&mut self, n: usize) {
-        self.0.advance(n)
-    }
-    #[inline]
-    pub fn advance_slices(bufs: &mut &mut [IoSlice<'a>], n: usize) {
-        let mut remove = 0;
-        let mut left = n;
-        for buf in bufs.iter() {
-            if let Some(remainder) = left.checked_sub(buf.len()) {
-                left = remainder;
-                remove += 1;
-            } else {
-                break;
-            }
-        }
-        *bufs = &mut take(bufs)[remove..];
-        if bufs.is_empty() {
-            assert!(left == 0, "advancing io slices beyond their length");
-        } else {
-            bufs[0].advance(left);
-        }
-    }
-}
-impl<'a> Deref for IoSlice<'a> {
-    type Target = [u8];
-    #[inline]
-    fn deref(&self) -> &[u8] {
-        self.0.as_slice()
-    }
-}
-#[doc(notable_trait)]
-#[cfg_attr(not(test), rustc_diagnostic_item = "IoWrite")]
 pub trait Write {
     fn write(&mut self, buf: &[u8]) -> Result<usize>;
-    fn write_vectored(&mut self, bufs: &[IoSlice<'_>]) -> Result<usize> {
-        default_write_vectored(|b| self.write(b), bufs)
-    }
     fn is_write_vectored(&self) -> bool {
         false
     }
@@ -377,20 +273,6 @@ pub trait Write {
                     return Err(Error::WRITE_ALL_EOF);
                 }
                 Ok(n) => buf = &buf[n..],
-                Err(ref e) if e.is_interrupted() => {}
-                Err(e) => return Err(e),
-            }
-        }
-        Ok(())
-    }
-    fn write_all_vectored(&mut self, mut bufs: &mut [IoSlice<'_>]) -> Result<()> {
-        IoSlice::advance_slices(&mut bufs, 0);
-        while !bufs.is_empty() {
-            match self.write_vectored(bufs) {
-                Ok(0) => {
-                    return Err(Error::WRITE_ALL_EOF);
-                }
-                Ok(n) => IoSlice::advance_slices(&mut bufs, n),
                 Err(ref e) if e.is_interrupted() => {}
                 Err(e) => return Err(e),
             }
@@ -435,7 +317,6 @@ pub trait Write {
         self
     }
 }
-#[cfg_attr(not(test), rustc_diagnostic_item = "IoSeek")]
 pub trait Seek {
     fn seek(&mut self, pos: SeekFrom) -> Result<u64>;
     fn rewind(&mut self) -> Result<()> {
@@ -856,7 +737,6 @@ impl<B: BufRead> Iterator for Split<B> {
     }
 }
 #[derive(Debug)]
-#[cfg_attr(not(test), rustc_diagnostic_item = "IoLines")]
 pub struct Lines<B> {
     buf: B,
 }
