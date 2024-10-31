@@ -103,10 +103,10 @@ impl Read for Repeat {
         Ok(())
     }
     fn read_to_end(&mut self, _: &mut Vec<u8>) -> crate::Result<usize> {
-        Err(crate::Error::from(crate::Error::OutOfMemory))
+        Err(crate::Error::OutOfMemory)
     }
     fn read_to_string(&mut self, _: &mut String) -> crate::Result<usize> {
-        Err(crate::Error::from(crate::Error::OutOfMemory))
+        Err(crate::Error::OutOfMemory)
     }
 }
 impl SizeHint for Repeat {

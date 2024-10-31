@@ -1,8 +1,4 @@
 pub const fn memchr(x: u8, text: &[u8]) -> Option<usize> {
-    return memchr_naive(x, text);
-}
-
-const fn memchr_naive(x: u8, text: &[u8]) -> Option<usize> {
     let mut i = 0;
     while i < text.len() {
         if text[i] == x {

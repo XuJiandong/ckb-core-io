@@ -82,6 +82,11 @@ impl<'data> BorrowedBuf<'data> {
         self.filled
     }
 
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.filled == 0
+    }
+
     /// Returns the length of the initialized part of the buffer.
     #[inline]
     pub fn init_len(&self) -> usize {

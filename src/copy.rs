@@ -1,10 +1,6 @@
 use super::{BorrowedBuf, Read, Result, Write, DEFAULT_BUF_SIZE};
 use core::mem::MaybeUninit;
-pub fn copy<R: ?Sized, W: ?Sized>(reader: &mut R, writer: &mut W) -> Result<u64>
-where
-    R: Read,
-    W: Write,
-{
+pub fn copy<R: ?Sized + Read, W: ?Sized + Write>(reader: &mut R, writer: &mut W) -> Result<u64> {
     stack_buffer_copy(reader, writer)
 }
 

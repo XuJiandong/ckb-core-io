@@ -198,7 +198,7 @@ impl Read for &[u8] {
     #[inline]
     fn read_buf_exact(&mut self, mut cursor: BorrowedCursor<'_>) -> crate::Result<()> {
         if cursor.capacity() > self.len() {
-            cursor.append(*self);
+            cursor.append(self);
             *self = &self[self.len()..];
             return Err(crate::Error::ReadExactEof);
         }
@@ -211,7 +211,7 @@ impl Read for &[u8] {
     fn read_to_end(&mut self, buf: &mut Vec<u8>) -> crate::Result<usize> {
         let len = self.len();
         buf.try_reserve(len)?;
-        buf.extend_from_slice(*self);
+        buf.extend_from_slice(self);
         *self = &self[len..];
         Ok(len)
     }

@@ -51,7 +51,7 @@ where
     let ret = f(g.buf);
     let appended = unsafe { g.buf.get_unchecked(g.len..) };
     if str::from_utf8(appended).is_err() {
-        ret.and_then(|_| Err(Error::InvalidUtf8))
+        ret.and(Err(Error::InvalidUtf8))
     } else {
         g.len = g.buf.len();
         ret
@@ -461,7 +461,7 @@ impl<T: BufRead, U: BufRead> BufRead for Chain<T, U> {
     fn fill_buf(&mut self) -> Result<&[u8]> {
         if !self.done_first {
             match self.first.fill_buf()? {
-                buf if buf.is_empty() => self.done_first = true,
+                [] => self.done_first = true,
                 buf => return Ok(buf),
             }
         }

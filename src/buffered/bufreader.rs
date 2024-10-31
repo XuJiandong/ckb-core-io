@@ -54,7 +54,7 @@ impl<R: ?Sized + Seek> BufReader<R> {
     pub fn seek_relative(&mut self, offset: i64) -> crate::Result<()> {
         let pos = self.buf.pos() as u64;
         if offset < 0 {
-            if let Some(_) = pos.checked_sub((-offset) as u64) {
+            if pos.checked_sub((-offset) as u64).is_some() {
                 self.buf.unconsume((-offset) as usize);
                 return Ok(());
             }
