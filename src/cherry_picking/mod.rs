@@ -1,2 +1,2 @@
-pub mod borrowed_buf;
-pub mod memchr;
+pub(crate) mod borrowed_buf;
+pub(crate) mod memchr;

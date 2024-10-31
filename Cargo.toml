@@ -2,5 +2,11 @@
 name = "ckb-core-io"
 version = "1.0.0"
 edition = "2021"
+authors = ["Lyndon <lynndon@gmail.com>"]
+license = "MIT"
+repository = "https://github.com/XuJiandong/ckb-core-io"
+keywords = ["no_std", "io", "core"]
+readme = "README.md"
+description = "A `no_std` compatible I/O module, ported from `std::io`."
 
 [dependencies]
