@@ -1,6 +1,7 @@
 use crate::error::Error;
 use crate::{IntoInnerError, Seek, SeekFrom, Write, DEFAULT_BUF_SIZE};
 use alloc::fmt;
+use alloc::vec::Vec;
 use core::error;
 use core::mem::{self, ManuallyDrop};
 use core::ptr;

@@ -1,3 +1,4 @@
+#![no_std]
 extern crate alloc;
 mod cherry_picking;
 
@@ -10,12 +11,13 @@ pub use self::{
     util::{empty, repeat, sink, Empty, Repeat, Sink},
 };
 pub use crate::cherry_picking::borrowed_buf::{BorrowedBuf, BorrowedCursor};
+use alloc::boxed::Box;
 use alloc::fmt;
 use alloc::str;
+use alloc::string::String;
+use alloc::vec::Vec;
 use cherry_picking::memchr;
-use core::cmp;
-use core::mem::take;
-use core::ops::{Deref, DerefMut};
+use core::{cmp, slice};
 mod buffered;
 pub(crate) mod copy;
 mod cursor;
@@ -46,7 +48,7 @@ where
     let ret = f(g.buf);
     let appended = unsafe { g.buf.get_unchecked(g.len..) };
     if str::from_utf8(appended).is_err() {
-        ret.and_then(|_| Err(Error::INVALID_UTF8))
+        ret.and_then(|_| Err(Error::InvalidUtf8))
     } else {
         g.len = g.buf.len();
         ret
@@ -139,26 +141,7 @@ pub(crate) fn default_read_to_string<R: Read + ?Sized>(
 ) -> Result<usize> {
     unsafe { append_to_string(buf, |b| default_read_to_end(r, b, size_hint)) }
 }
-pub(crate) fn default_read_vectored<F>(read: F, bufs: &mut [IoSliceMut<'_>]) -> Result<usize>
-where
-    F: FnOnce(&mut [u8]) -> Result<usize>,
-{
-    let buf = bufs
-        .iter_mut()
-        .find(|b| !b.is_empty())
-        .map_or(&mut [][..], |b| &mut **b);
-    read(buf)
-}
-pub(crate) fn default_write_vectored<F>(write: F, bufs: &[IoSlice<'_>]) -> Result<usize>
-where
-    F: FnOnce(&[u8]) -> Result<usize>,
-{
-    let buf = bufs
-        .iter()
-        .find(|b| !b.is_empty())
-        .map_or(&[][..], |b| &**b);
-    write(buf)
-}
+
 pub(crate) fn default_read_exact<R: Read + ?Sized>(this: &mut R, mut buf: &mut [u8]) -> Result<()> {
     while !buf.is_empty() {
         match this.read(buf) {
@@ -171,7 +154,7 @@ pub(crate) fn default_read_exact<R: Read + ?Sized>(this: &mut R, mut buf: &mut [
         }
     }
     if !buf.is_empty() {
-        Err(Error::READ_EXACT_EOF)
+        Err(Error::ReadExactEof)
     } else {
         Ok(())
     }
@@ -196,18 +179,13 @@ pub(crate) fn default_read_buf_exact<R: Read + ?Sized>(
             Err(e) => return Err(e),
         }
         if cursor.written() == prev_written {
-            return Err(Error::READ_EXACT_EOF);
+            return Err(Error::ReadExactEof);
         }
     }
     Ok(())
 }
-#[doc(notable_trait)]
-#[cfg_attr(not(test), rustc_diagnostic_item = "IoRead")]
 pub trait Read {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize>;
-    fn read_vectored(&mut self, bufs: &mut [IoSliceMut<'_>]) -> Result<usize> {
-        default_read_vectored(|b| self.read(b), bufs)
-    }
     fn is_read_vectored(&self) -> bool {
         false
     }
@@ -270,7 +248,7 @@ pub trait Write {
         while !buf.is_empty() {
             match self.write(buf) {
                 Ok(0) => {
-                    return Err(Error::WRITE_ALL_EOF);
+                    return Err(Error::WriteAllEof);
                 }
                 Ok(n) => buf = &buf[n..],
                 Err(ref e) if e.is_interrupted() => {}
@@ -305,7 +283,7 @@ pub trait Write {
                 if output.error.is_err() {
                     output.error
                 } else {
-                    panic ! ("a formatting trait implementation returned an error when the underlying stream did not");
+                    panic!("a formatting trait implementation returned an error when the underlying stream did not");
                 }
             }
         }
@@ -378,7 +356,7 @@ fn skip_until<R: BufRead + ?Sized>(r: &mut R, delim: u8) -> Result<usize> {
         let (done, used) = {
             let available = match r.fill_buf() {
                 Ok(n) => n,
-                Err(ref e) if e.kind() == ErrorKind::Interrupted => continue,
+                Err(ref e) if e.is_interrupted() => continue,
                 Err(e) => return Err(e),
             };
             match memchr::memchr(delim, available) {
@@ -451,19 +429,6 @@ impl<T: Read, U: Read> Read for Chain<T, U> {
         }
         self.second.read(buf)
     }
-    fn read_vectored(&mut self, bufs: &mut [IoSliceMut<'_>]) -> Result<usize> {
-        if !self.done_first {
-            match self.first.read_vectored(bufs)? {
-                0 if bufs.iter().any(|b| !b.is_empty()) => self.done_first = true,
-                n => return Ok(n),
-            }
-        }
-        self.second.read_vectored(bufs)
-    }
-    #[inline]
-    fn is_read_vectored(&self) -> bool {
-        self.first.is_read_vectored() || self.second.is_read_vectored()
-    }
     fn read_to_end(&mut self, buf: &mut Vec<u8>) -> Result<usize> {
         let mut read = 0;
         if !self.done_first {
@@ -520,7 +485,7 @@ impl<T: BufRead, U: BufRead> BufRead for Chain<T, U> {
         Ok(read)
     }
 }
-impl<T, U> SizeHint for Chain<T, U> {
+impl<T: SizeHint, U: SizeHint> SizeHint for Chain<T, U> {
     #[inline]
     fn lower_bound(&self) -> usize {
         SizeHint::lower_bound(&self.first) + SizeHint::lower_bound(&self.second)
@@ -613,7 +578,7 @@ impl<T: BufRead> BufRead for Take<T> {
         self.inner.consume(amt);
     }
 }
-impl<T> SizeHint for Take<T> {
+impl<T: SizeHint> SizeHint for Take<T> {
     #[inline]
     fn lower_bound(&self) -> usize {
         cmp::min(SizeHint::lower_bound(&self.inner) as u64, self.limit) as usize
@@ -628,30 +593,14 @@ impl<T> SizeHint for Take<T> {
 }
 #[derive(Debug)]
 pub struct Bytes<R> {
+    #[allow(unused)]
     inner: R,
 }
-impl<R: Read> Iterator for Bytes<R> {
-    type Item = Result<u8>;
-    fn next(&mut self) -> Option<Result<u8>> {
-        SpecReadByte::spec_read_byte(&mut self.inner)
-    }
-    #[inline]
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        SizeHint::size_hint(&self.inner)
-    }
-}
+#[allow(unused)]
 trait SpecReadByte {
     fn spec_read_byte(&mut self) -> Option<Result<u8>>;
 }
-impl<R> SpecReadByte for R
-where
-    Self: Read,
-{
-    #[inline]
-    fn spec_read_byte(&mut self) -> Option<Result<u8>> {
-        inlined_slow_read_byte(self)
-    }
-}
+
 #[inline]
 fn inlined_slow_read_byte<R: Read>(reader: &mut R) -> Option<Result<u8>> {
     let mut byte = 0;
@@ -668,24 +617,16 @@ fn inlined_slow_read_byte<R: Read>(reader: &mut R) -> Option<Result<u8>> {
 fn uninlined_slow_read_byte<R: Read>(reader: &mut R) -> Option<Result<u8>> {
     inlined_slow_read_byte(reader)
 }
-trait SizeHint {
+#[allow(unused)]
+pub(crate) trait SizeHint {
     fn lower_bound(&self) -> usize;
     fn upper_bound(&self) -> Option<usize>;
     fn size_hint(&self) -> (usize, Option<usize>) {
         (self.lower_bound(), self.upper_bound())
     }
 }
-impl<T: ?Sized> SizeHint for T {
-    #[inline]
-    fn lower_bound(&self) -> usize {
-        0
-    }
-    #[inline]
-    fn upper_bound(&self) -> Option<usize> {
-        None
-    }
-}
-impl<T> SizeHint for &mut T {
+
+impl<T: SizeHint> SizeHint for &mut T {
     #[inline]
     fn lower_bound(&self) -> usize {
         SizeHint::lower_bound(*self)
@@ -695,7 +636,7 @@ impl<T> SizeHint for &mut T {
         SizeHint::upper_bound(*self)
     }
 }
-impl<T> SizeHint for Box<T> {
+impl<T: SizeHint> SizeHint for Box<T> {
     #[inline]
     fn lower_bound(&self) -> usize {
         SizeHint::lower_bound(&**self)

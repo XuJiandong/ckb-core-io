@@ -47,10 +47,8 @@ impl<'data> From<&'data mut [u8]> for BorrowedBuf<'data> {
     #[inline]
     fn from(slice: &'data mut [u8]) -> BorrowedBuf<'data> {
         let len = slice.len();
-
         BorrowedBuf {
-            // SAFETY: initialized data never becoming uninitialized is an invariant of BorrowedBuf
-            buf: unsafe { (slice as *mut [u8]).as_uninit_slice_mut().unwrap() },
+            buf: unsafe { &mut *(slice as *mut [u8] as *mut [MaybeUninit<u8>]) },
             filled: 0,
             init: len,
         }
@@ -96,7 +94,7 @@ impl<'data> BorrowedBuf<'data> {
         // SAFETY: We only slice the filled part of the buffer, which is always valid
         unsafe {
             let buf = self.buf.get_unchecked(..self.filled);
-            MaybeUninit::slice_assume_init_ref(buf)
+            &*(buf as *const [MaybeUninit<u8>] as *const [u8])
         }
     }
 
@@ -106,7 +104,7 @@ impl<'data> BorrowedBuf<'data> {
         // SAFETY: We only slice the filled part of the buffer, which is always valid
         unsafe {
             let buf = self.buf.get_unchecked_mut(..self.filled);
-            MaybeUninit::slice_assume_init_mut(buf)
+            &mut *(buf as *mut [MaybeUninit<u8>] as *mut [u8])
         }
     }
 
@@ -215,7 +213,7 @@ impl<'a> BorrowedCursor<'a> {
         // SAFETY: We only slice the initialized part of the buffer, which is always valid
         unsafe {
             let buf = self.buf.buf.get_unchecked(self.buf.filled..self.buf.init);
-            MaybeUninit::slice_assume_init_ref(buf)
+            &*(buf as *const [MaybeUninit<u8>] as *const [u8])
         }
     }
 
@@ -228,7 +226,7 @@ impl<'a> BorrowedCursor<'a> {
                 .buf
                 .buf
                 .get_unchecked_mut(self.buf.filled..self.buf.init);
-            MaybeUninit::slice_assume_init_mut(buf)
+            &mut *(buf as *mut [MaybeUninit<u8>] as *mut [u8])
         }
     }
 
@@ -266,7 +264,7 @@ impl<'a> BorrowedCursor<'a> {
     /// Panics if there are less than `n` bytes initialized.
     #[inline]
     pub fn advance(&mut self, n: usize) -> &mut Self {
-        let filled = self.buf.filled.strict_add(n);
+        let filled = self.buf.filled.checked_add(n).unwrap();
         assert!(filled <= self.buf.init);
 
         self.buf.filled = filled;
@@ -329,7 +327,11 @@ impl<'a> BorrowedCursor<'a> {
 
         // SAFETY: we do not de-initialize any of the elements of the slice
         unsafe {
-            MaybeUninit::copy_from_slice(&mut self.as_mut()[..buf.len()], buf);
+            ptr::copy(
+                buf.as_ptr(),
+                self.as_mut().as_mut_ptr() as *mut u8,
+                buf.len(),
+            );
         }
 
         // SAFETY: We just added the entire contents of buf to the filled section.

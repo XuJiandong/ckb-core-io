@@ -1,44 +1,32 @@
+use alloc::vec::Vec;
+
 use super::{BorrowedBuf, BufReader, BufWriter, Read, Result, Write, DEFAULT_BUF_SIZE};
-use crate::IoSlice;
-use alloc::collections::VecDeque;
 use core::cmp;
 use core::mem::MaybeUninit;
 pub fn copy<R: ?Sized, W: ?Sized>(reader: &mut R, writer: &mut W) -> Result<u64>
 where
-    R: Read,
-    W: Write,
+    R: Read + BufferedReaderSpec,
+    W: Write + BufferedWriterSpec,
 {
     generic_copy(reader, writer)
 }
 pub(crate) fn generic_copy<R: ?Sized, W: ?Sized>(reader: &mut R, writer: &mut W) -> Result<u64>
 where
-    R: Read,
-    W: Write,
+    R: Read + BufferedReaderSpec,
+    W: Write + BufferedWriterSpec,
 {
-    let read_buf = BufferedReaderSpec::buffer_size(reader);
-    let write_buf = BufferedWriterSpec::buffer_size(writer);
+    let read_buf = reader.buffer_size();
+    let write_buf = writer.buffer_size();
     if read_buf >= DEFAULT_BUF_SIZE && read_buf >= write_buf {
-        return BufferedReaderSpec::copy_to(reader, writer);
+        return reader.copy_to(writer);
     }
-    BufferedWriterSpec::copy_from(writer, reader)
+    writer.copy_from(reader)
 }
-trait BufferedReaderSpec {
+pub trait BufferedReaderSpec {
     fn buffer_size(&self) -> usize;
     fn copy_to(&mut self, to: &mut (impl Write + ?Sized)) -> Result<u64>;
 }
-impl<T> BufferedReaderSpec for T
-where
-    Self: Read,
-    T: ?Sized,
-{
-    #[inline]
-    fn buffer_size(&self) -> usize {
-        0
-    }
-    fn copy_to(&mut self, _to: &mut (impl Write + ?Sized)) -> Result<u64> {
-        unreachable!("only called from specializations")
-    }
-}
+
 impl BufferedReaderSpec for &[u8] {
     fn buffer_size(&self) -> usize {
         usize::MAX
@@ -47,19 +35,6 @@ impl BufferedReaderSpec for &[u8] {
         let len = self.len();
         to.write_all(self)?;
         *self = &self[len..];
-        Ok(len as u64)
-    }
-}
-impl BufferedReaderSpec for VecDeque<u8> {
-    fn buffer_size(&self) -> usize {
-        usize::MAX
-    }
-    fn copy_to(&mut self, to: &mut (impl Write + ?Sized)) -> Result<u64> {
-        let len = self.len();
-        let (front, back) = self.as_slices();
-        let bufs = &mut [IoSlice::new(front), IoSlice::new(back)];
-        to.write_all_vectored(bufs)?;
-        self.clear();
         Ok(len as u64)
     }
 }
@@ -90,19 +65,11 @@ where
         }
     }
 }
-trait BufferedWriterSpec: Write {
+pub trait BufferedWriterSpec: Write {
     fn buffer_size(&self) -> usize;
     fn copy_from<R: Read + ?Sized>(&mut self, reader: &mut R) -> Result<u64>;
 }
-impl<W: Write + ?Sized> BufferedWriterSpec for W {
-    #[inline]
-    fn buffer_size(&self) -> usize {
-        0
-    }
-    fn copy_from<R: Read + ?Sized>(&mut self, reader: &mut R) -> Result<u64> {
-        stack_buffer_copy(reader, self)
-    }
-}
+
 impl<I: Write + ?Sized> BufferedWriterSpec for BufWriter<I> {
     fn buffer_size(&self) -> usize {
         self.capacity()

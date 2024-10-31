@@ -3,9 +3,7 @@ mod bufwriter;
 mod linewriter;
 mod linewritershim;
 pub use self::{bufreader::BufReader, bufwriter::BufWriter, linewriter::LineWriter};
-use crate::error;
 use crate::Error;
-use alloc::fmt;
 pub use bufwriter::WriterPanicked;
 use linewritershim::LineWriterShim;
 #[derive(Debug)]
@@ -34,16 +32,5 @@ impl<W> IntoInnerError<W> {
 impl<W> From<IntoInnerError<W>> for Error {
     fn from(iie: IntoInnerError<W>) -> Error {
         iie.1
-    }
-}
-impl<W: Send + fmt::Debug> core::error::Error for IntoInnerError<W> {
-    #[allow(deprecated, deprecated_in_future)]
-    fn description(&self) -> &str {
-        error::Error::description(self.error())
-    }
-}
-impl<W> fmt::Display for IntoInnerError<W> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.error().fmt(f)
     }
 }

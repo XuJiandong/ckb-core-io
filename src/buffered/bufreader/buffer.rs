@@ -1,4 +1,7 @@
-use crate::{self, BorrowedBuf, Read};
+use alloc::boxed::Box;
+use alloc::vec;
+
+use crate::{BorrowedBuf, Read};
 use core::cmp;
 use core::mem::MaybeUninit;
 pub struct Buffer {
@@ -10,7 +13,7 @@ pub struct Buffer {
 impl Buffer {
     #[inline]
     pub fn with_capacity(capacity: usize) -> Self {
-        let buf = Box::new_uninit_slice(capacity);
+        let buf = vec![MaybeUninit::uninit(); capacity].into_boxed_slice();
         Self {
             buf,
             pos: 0,
@@ -20,7 +23,12 @@ impl Buffer {
     }
     #[inline]
     pub fn buffer(&self) -> &[u8] {
-        unsafe { MaybeUninit::slice_assume_init_ref(self.buf.get_unchecked(self.pos..self.filled)) }
+        unsafe {
+            core::slice::from_raw_parts(
+                self.buf.as_ptr().add(self.pos) as *const u8,
+                self.filled - self.pos,
+            )
+        }
     }
     #[inline]
     pub fn capacity(&self) -> usize {

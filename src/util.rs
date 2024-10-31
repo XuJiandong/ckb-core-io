@@ -1,5 +1,5 @@
 use crate::{BorrowedCursor, BufRead, Read, Seek, SeekFrom, SizeHint, Write};
-use alloc::fmt;
+use alloc::{fmt, string::String, vec::Vec};
 #[non_exhaustive]
 #[derive(Copy, Clone, Debug, Default)]
 pub struct Empty;
@@ -37,6 +37,10 @@ impl Seek for Empty {
     }
 }
 impl SizeHint for Empty {
+    #[inline]
+    fn lower_bound(&self) -> usize {
+        0
+    }
     #[inline]
     fn upper_bound(&self) -> Option<usize> {
         Some(0)

@@ -3,7 +3,7 @@ use crate::{
     uninlined_slow_read_byte, BorrowedCursor, BufRead, Read, Seek, SeekFrom, SizeHint,
     SpecReadByte, DEFAULT_BUF_SIZE,
 };
-use alloc::fmt;
+use alloc::{fmt, string::String, vec::Vec};
 use buffer::Buffer;
 pub struct BufReader<R: ?Sized> {
     buf: Buffer,
@@ -134,7 +134,7 @@ impl<R: ?Sized + Read> Read for BufReader<R> {
         } else {
             let mut bytes = Vec::new();
             self.read_to_end(&mut bytes)?;
-            let string = alloc::str::from_utf8(&bytes).map_err(|_| crate::Error::INVALID_UTF8)?;
+            let string = alloc::str::from_utf8(&bytes).map_err(|_| crate::Error::InvalidUtf8)?;
             *buf += string;
             Ok(string.len())
         }
@@ -192,7 +192,7 @@ impl<R: ?Sized + Seek> Seek for BufReader<R> {
         self.seek_relative(offset)
     }
 }
-impl<T: ?Sized> SizeHint for BufReader<T> {
+impl<T: ?Sized + SizeHint> SizeHint for BufReader<T> {
     #[inline]
     fn lower_bound(&self) -> usize {
         SizeHint::lower_bound(self.get_ref()) + self.buffer().len()

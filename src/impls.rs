@@ -1,7 +1,10 @@
-use crate::{self, BorrowedCursor, BufRead, IoSlice, IoSliceMut, Read, Seek, SeekFrom, Write};
+use crate::{BorrowedCursor, BufRead, Read, Seek, SeekFrom, Write};
+use alloc::boxed::Box;
 use alloc::collections::VecDeque;
 use alloc::fmt;
 use alloc::str;
+use alloc::string::String;
+use alloc::vec::Vec;
 use core::cmp;
 use core::mem;
 impl<R: Read + ?Sized> Read for &mut R {
@@ -12,10 +15,6 @@ impl<R: Read + ?Sized> Read for &mut R {
     #[inline]
     fn read_buf(&mut self, cursor: BorrowedCursor<'_>) -> crate::Result<()> {
         (**self).read_buf(cursor)
-    }
-    #[inline]
-    fn read_vectored(&mut self, bufs: &mut [IoSliceMut<'_>]) -> crate::Result<usize> {
-        (**self).read_vectored(bufs)
     }
     #[inline]
     fn is_read_vectored(&self) -> bool {
@@ -42,14 +41,6 @@ impl<W: Write + ?Sized> Write for &mut W {
     #[inline]
     fn write(&mut self, buf: &[u8]) -> crate::Result<usize> {
         (**self).write(buf)
-    }
-    #[inline]
-    fn write_vectored(&mut self, bufs: &[IoSlice<'_>]) -> crate::Result<usize> {
-        (**self).write_vectored(bufs)
-    }
-    #[inline]
-    fn is_write_vectored(&self) -> bool {
-        (**self).is_write_vectored()
     }
     #[inline]
     fn flush(&mut self) -> crate::Result<()> {
@@ -102,10 +93,6 @@ impl<R: Read + ?Sized> Read for Box<R> {
         (**self).read_buf(cursor)
     }
     #[inline]
-    fn read_vectored(&mut self, bufs: &mut [IoSliceMut<'_>]) -> crate::Result<usize> {
-        (**self).read_vectored(bufs)
-    }
-    #[inline]
     fn is_read_vectored(&self) -> bool {
         (**self).is_read_vectored()
     }
@@ -130,14 +117,6 @@ impl<W: Write + ?Sized> Write for Box<W> {
     #[inline]
     fn write(&mut self, buf: &[u8]) -> crate::Result<usize> {
         (**self).write(buf)
-    }
-    #[inline]
-    fn write_vectored(&mut self, bufs: &[IoSlice<'_>]) -> crate::Result<usize> {
-        (**self).write_vectored(bufs)
-    }
-    #[inline]
-    fn is_write_vectored(&self) -> bool {
-        (**self).is_write_vectored()
     }
     #[inline]
     fn flush(&mut self) -> crate::Result<()> {
@@ -202,25 +181,10 @@ impl Read for &[u8] {
         Ok(())
     }
     #[inline]
-    fn read_vectored(&mut self, bufs: &mut [IoSliceMut<'_>]) -> crate::Result<usize> {
-        let mut nread = 0;
-        for buf in bufs {
-            nread += self.read(buf)?;
-            if self.is_empty() {
-                break;
-            }
-        }
-        Ok(nread)
-    }
-    #[inline]
-    fn is_read_vectored(&self) -> bool {
-        true
-    }
-    #[inline]
     fn read_exact(&mut self, buf: &mut [u8]) -> crate::Result<()> {
         if buf.len() > self.len() {
             *self = &self[self.len()..];
-            return Err(crate::Error::READ_EXACT_EOF);
+            return Err(crate::Error::ReadExactEof);
         }
         let (a, b) = self.split_at(buf.len());
         if buf.len() == 1 {
@@ -236,7 +200,7 @@ impl Read for &[u8] {
         if cursor.capacity() > self.len() {
             cursor.append(*self);
             *self = &self[self.len()..];
-            return Err(crate::Error::READ_EXACT_EOF);
+            return Err(crate::Error::ReadExactEof);
         }
         let (a, b) = self.split_at(cursor.capacity());
         cursor.append(a);
@@ -253,7 +217,7 @@ impl Read for &[u8] {
     }
     #[inline]
     fn read_to_string(&mut self, buf: &mut String) -> crate::Result<usize> {
-        let content = str::from_utf8(self).map_err(|_| crate::Error::INVALID_UTF8)?;
+        let content = str::from_utf8(self).map_err(|_| crate::Error::InvalidUtf8)?;
         let len = self.len();
         buf.try_reserve(len)?;
         buf.push_str(content);
@@ -281,17 +245,6 @@ impl Write for &mut [u8] {
         Ok(amt)
     }
     #[inline]
-    fn write_vectored(&mut self, bufs: &[IoSlice<'_>]) -> crate::Result<usize> {
-        let mut nwritten = 0;
-        for buf in bufs {
-            nwritten += self.write(buf)?;
-            if self.is_empty() {
-                break;
-            }
-        }
-        Ok(nwritten)
-    }
-    #[inline]
     fn is_write_vectored(&self) -> bool {
         true
     }
@@ -300,7 +253,7 @@ impl Write for &mut [u8] {
         if self.write(data)? == data.len() {
             Ok(())
         } else {
-            Err(crate::Error::WRITE_ALL_EOF)
+            Err(crate::Error::WriteAllEof)
         }
     }
     #[inline]
@@ -313,15 +266,6 @@ impl Write for Vec<u8> {
     fn write(&mut self, buf: &[u8]) -> crate::Result<usize> {
         self.extend_from_slice(buf);
         Ok(buf.len())
-    }
-    #[inline]
-    fn write_vectored(&mut self, bufs: &[IoSlice<'_>]) -> crate::Result<usize> {
-        let len = bufs.iter().map(|b| b.len()).sum();
-        self.reserve(len);
-        for buf in bufs {
-            self.extend_from_slice(buf);
-        }
-        Ok(len)
     }
     #[inline]
     fn is_write_vectored(&self) -> bool {
@@ -384,15 +328,6 @@ impl Write for VecDeque<u8> {
     fn write(&mut self, buf: &[u8]) -> crate::Result<usize> {
         self.extend(buf);
         Ok(buf.len())
-    }
-    #[inline]
-    fn write_vectored(&mut self, bufs: &[IoSlice<'_>]) -> crate::Result<usize> {
-        let len = bufs.iter().map(|b| b.len()).sum();
-        self.reserve(len);
-        for buf in bufs {
-            self.extend(&**buf);
-        }
-        Ok(len)
     }
     #[inline]
     fn is_write_vectored(&self) -> bool {
