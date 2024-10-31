@@ -99,6 +99,7 @@ impl<W: ?Sized + Write> BufWriter<W> {
     pub fn buffer(&self) -> &[u8] {
         &self.buf
     }
+    #[allow(dead_code)]
     pub(crate) fn buffer_mut(&mut self) -> &mut Vec<u8> {
         &mut self.buf
     }

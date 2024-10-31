@@ -2,6 +2,9 @@
 extern crate alloc;
 mod cherry_picking;
 
+#[cfg(test)]
+mod tests;
+
 pub use self::buffered::WriterPanicked;
 pub use self::{
     buffered::{BufReader, BufWriter, IntoInnerError, LineWriter},
@@ -596,6 +599,20 @@ pub struct Bytes<R> {
     #[allow(unused)]
     inner: R,
 }
+
+impl<R: Read> Iterator for Bytes<R> {
+    type Item = Result<u8>;
+
+    fn next(&mut self) -> Option<Result<u8>> {
+        inlined_slow_read_byte(&mut self.inner)
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (0, None)
+    }
+}
+
 #[allow(unused)]
 trait SpecReadByte {
     fn spec_read_byte(&mut self) -> Option<Result<u8>>;

@@ -1,3 +1,6 @@
+#[cfg(test)]
+mod tests;
+
 use crate::{BorrowedCursor, BufRead, Read, Seek, SeekFrom, SizeHint, Write};
 use alloc::{fmt, string::String, vec::Vec};
 #[non_exhaustive]

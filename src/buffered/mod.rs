@@ -2,6 +2,9 @@ mod bufreader;
 mod bufwriter;
 mod linewriter;
 mod linewritershim;
+#[cfg(test)]
+mod tests;
+
 pub use self::{bufreader::BufReader, bufwriter::BufWriter, linewriter::LineWriter};
 use crate::Error;
 pub use bufwriter::WriterPanicked;

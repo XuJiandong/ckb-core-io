@@ -1,6 +1,6 @@
 use alloc::collections::TryReserveError;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Error {
     OutOfMemory,
     WriteZero,
