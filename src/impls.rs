@@ -184,7 +184,7 @@ impl Read for &[u8] {
     fn read_exact(&mut self, buf: &mut [u8]) -> crate::Result<()> {
         if buf.len() > self.len() {
             *self = &self[self.len()..];
-            return Err(crate::Error::ReadExactEof);
+            return Err(crate::Error::READ_EXACT_EOF);
         }
         let (a, b) = self.split_at(buf.len());
         if buf.len() == 1 {
@@ -200,7 +200,7 @@ impl Read for &[u8] {
         if cursor.capacity() > self.len() {
             cursor.append(self);
             *self = &self[self.len()..];
-            return Err(crate::Error::ReadExactEof);
+            return Err(crate::Error::READ_EXACT_EOF);
         }
         let (a, b) = self.split_at(cursor.capacity());
         cursor.append(a);
@@ -217,7 +217,7 @@ impl Read for &[u8] {
     }
     #[inline]
     fn read_to_string(&mut self, buf: &mut String) -> crate::Result<usize> {
-        let content = str::from_utf8(self).map_err(|_| crate::Error::InvalidUtf8)?;
+        let content = str::from_utf8(self).map_err(|_| crate::Error::INVALID_UTF8)?;
         let len = self.len();
         buf.try_reserve(len)?;
         buf.push_str(content);
@@ -253,7 +253,7 @@ impl Write for &mut [u8] {
         if self.write(data)? == data.len() {
             Ok(())
         } else {
-            Err(crate::Error::WriteAllEof)
+            Err(crate::Error::WRITE_ALL_EOF)
         }
     }
     #[inline]

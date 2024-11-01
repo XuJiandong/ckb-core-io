@@ -5,6 +5,7 @@ use alloc::vec::Vec;
 use super::{BorrowedBuf, Cursor, SeekFrom};
 use crate as io;
 use crate::cmp;
+use crate::error::ErrorKind;
 use crate::{BufRead, BufReader, Read, Seek};
 use crate::{Error, DEFAULT_BUF_SIZE};
 
@@ -158,14 +159,20 @@ fn read_exact() {
     let mut buf = [0; 4];
 
     let mut c = Cursor::new(&b""[..]);
-    assert_eq!(c.read_exact(&mut buf).unwrap_err(), Error::ReadExactEof);
+    assert_eq!(
+        c.read_exact(&mut buf).unwrap_err().kind(),
+        crate::error::ErrorKind::UnexpectedEof
+    );
 
     let mut c = Cursor::new(&b"123"[..]).chain(Cursor::new(&b"456789"[..]));
     c.read_exact(&mut buf).unwrap();
     assert_eq!(&buf, b"1234");
     c.read_exact(&mut buf).unwrap();
     assert_eq!(&buf, b"5678");
-    assert_eq!(c.read_exact(&mut buf).unwrap_err(), Error::ReadExactEof);
+    assert_eq!(
+        c.read_exact(&mut buf).unwrap_err().kind(),
+        crate::error::ErrorKind::UnexpectedEof
+    );
 }
 
 #[test]
@@ -173,10 +180,16 @@ fn read_exact_slice() {
     let mut buf = [0; 4];
 
     let mut c = &b""[..];
-    assert_eq!(c.read_exact(&mut buf).unwrap_err(), Error::ReadExactEof);
+    assert_eq!(
+        c.read_exact(&mut buf).unwrap_err().kind(),
+        crate::error::ErrorKind::UnexpectedEof
+    );
 
     let mut c = &b"123"[..];
-    assert_eq!(c.read_exact(&mut buf).unwrap_err(), Error::ReadExactEof);
+    assert_eq!(
+        c.read_exact(&mut buf).unwrap_err().kind(),
+        crate::error::ErrorKind::UnexpectedEof
+    );
     // make sure the optimized (early returning) method is being used
     assert_eq!(&buf, &[0; 4]);
 
@@ -197,8 +210,8 @@ fn read_buf_exact() {
 
     let mut c = Cursor::new(&b""[..]);
     assert_eq!(
-        c.read_buf_exact(buf.unfilled()).unwrap_err(),
-        Error::ReadExactEof
+        c.read_buf_exact(buf.unfilled()).unwrap_err().kind(),
+        ErrorKind::UnexpectedEof
     );
 
     let mut c = Cursor::new(&b"123456789"[..]);
@@ -213,8 +226,8 @@ fn read_buf_exact() {
     buf.clear();
 
     assert_eq!(
-        c.read_buf_exact(buf.unfilled()).unwrap_err(),
-        Error::ReadExactEof
+        c.read_buf_exact(buf.unfilled()).unwrap_err().kind(),
+        ErrorKind::UnexpectedEof
     );
 }
 
@@ -233,12 +246,12 @@ fn take_eof() {
 
     impl Read for R {
         fn read(&mut self, _: &mut [u8]) -> io::Result<usize> {
-            Err(Error::ReadExactEof)
+            Err(Error::new(ErrorKind::UnexpectedEof, "test - take_eof"))
         }
     }
     impl BufRead for R {
         fn fill_buf(&mut self) -> io::Result<&[u8]> {
-            Err(Error::ReadExactEof)
+            Err(Error::new(ErrorKind::UnexpectedEof, "test - fill_buf"))
         }
         fn consume(&mut self, _amt: usize) {}
     }
@@ -479,8 +492,10 @@ fn read_buf_full_read() {
 // 64-bit only to be sure the allocator will fail fast on an impossible to satsify size
 #[cfg(target_pointer_width = "64")]
 fn try_oom_error() {
+    use crate::error::ErrorKind;
+
     let mut v = Vec::<u8>::new();
     let reserve_err = v.try_reserve(isize::MAX as usize - 1).unwrap_err();
     let io_err = io::Error::from(reserve_err);
-    assert_eq!(Error::OutOfMemory, io_err);
+    assert_eq!(ErrorKind::OutOfMemory, io_err.kind());
 }

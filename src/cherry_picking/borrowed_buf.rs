@@ -92,6 +92,7 @@ impl<'data> BorrowedBuf<'data> {
         self
     }
 
+    /// # Safety
     #[inline]
     pub unsafe fn set_init(&mut self, n: usize) -> &mut Self {
         self.init = cmp::max(self.init, n);
@@ -148,6 +149,7 @@ impl<'a> BorrowedCursor<'a> {
     pub fn uninit_mut(&mut self) -> &mut [MaybeUninit<u8>] {
         unsafe { self.buf.buf.get_unchecked_mut(self.buf.init..) }
     }
+    /// # Safety
     #[inline]
     pub unsafe fn as_mut(&mut self) -> &mut [MaybeUninit<u8>] {
         unsafe { self.buf.buf.get_unchecked_mut(self.buf.filled..) }
@@ -160,6 +162,7 @@ impl<'a> BorrowedCursor<'a> {
         self.buf.filled = filled;
         self
     }
+    /// # Safety
     #[inline]
     pub unsafe fn advance_unchecked(&mut self, n: usize) -> &mut Self {
         self.buf.filled += n;
@@ -177,6 +180,7 @@ impl<'a> BorrowedCursor<'a> {
 
         self
     }
+    /// # Safety
     #[inline]
     pub unsafe fn set_init(&mut self, n: usize) -> &mut Self {
         self.buf.init = cmp::max(self.buf.init, self.buf.filled + n);

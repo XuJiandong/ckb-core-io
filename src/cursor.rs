@@ -5,7 +5,7 @@ use alloc::boxed::Box;
 use alloc::string::String;
 use alloc::vec::Vec;
 
-use crate::{prelude::*, Error};
+use crate::prelude::*;
 use crate::{BorrowedCursor, SeekFrom};
 use core::cmp;
 #[derive(Debug, Default, Eq, PartialEq)]
@@ -80,7 +80,10 @@ where
                 self.pos = n;
                 Ok(self.pos)
             }
-            None => Err(Error::InvalidInput),
+            None => Err(crate::const_io_error!(
+                crate::error::ErrorKind::InvalidInput,
+                "invalid seek to a negative or overflowing position",
+            )),
         }
     }
     fn stream_len(&mut self) -> crate::Result<u64> {
@@ -131,8 +134,8 @@ where
         Ok(len)
     }
     fn read_to_string(&mut self, buf: &mut String) -> crate::Result<usize> {
-        let content =
-            alloc::str::from_utf8(self.remaining_slice()).map_err(|_| crate::Error::InvalidUtf8)?;
+        let content = alloc::str::from_utf8(self.remaining_slice())
+            .map_err(|_| crate::Error::INVALID_UTF8)?;
         let len = content.len();
         buf.try_reserve(len)?;
         buf.push_str(content);
@@ -159,7 +162,12 @@ fn slice_write(pos_mut: &mut u64, slice: &mut [u8], buf: &[u8]) -> crate::Result
     Ok(amt)
 }
 fn reserve_and_pad(pos_mut: &mut u64, vec: &mut Vec<u8>, buf_len: usize) -> crate::Result<usize> {
-    let pos: usize = (*pos_mut).try_into().map_err(|_| Error::InvalidInput)?;
+    let pos: usize = (*pos_mut).try_into().map_err(|_| {
+        crate::const_io_error!(
+            crate::error::ErrorKind::InvalidInput,
+            "cursor position exceeds maximum possible vector length",
+        )
+    })?;
     let desired_cap = pos.saturating_add(buf_len);
     if desired_cap > vec.capacity() {
         vec.reserve(desired_cap - vec.len());

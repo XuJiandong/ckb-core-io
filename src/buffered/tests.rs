@@ -4,6 +4,7 @@ use alloc::vec;
 use alloc::vec::Vec;
 
 use crate as io;
+use crate::error::ErrorKind;
 use crate::{prelude::*, Error};
 use crate::{BorrowedBuf, BufReader, BufWriter, LineWriter, SeekFrom};
 use core::mem::MaybeUninit;
@@ -276,7 +277,7 @@ fn test_buffered_reader_seek_underflow_discard_buffer_between_seeks() {
                 self.first_seek = false;
                 Ok(0)
             } else {
-                Err(Error::InvalidInput)
+                Err(Error::new(ErrorKind::Other, "oh no!"))
             }
         }
     }
@@ -473,7 +474,7 @@ fn dont_panic_in_drop_on_panicked_flush() {
             Ok(buf.len())
         }
         fn flush(&mut self) -> io::Result<()> {
-            Err(io::Error::InvalidInput)
+            Err(Error::new(ErrorKind::Other, "test - always_flush_error"))
         }
     }
 
@@ -515,12 +516,12 @@ struct ProgrammableSink {
 impl Write for ProgrammableSink {
     fn write(&mut self, data: &[u8]) -> io::Result<usize> {
         if self.always_write_error {
-            return Err(Error::InvalidInput);
+            return Err(Error::new(ErrorKind::Other, "test - always_write_error"));
         }
 
         match self.max_writes {
             Some(0) if self.error_after_max_writes => {
-                return Err(Error::InvalidInput);
+                return Err(Error::new(ErrorKind::Other, "test - max_writes"));
             }
             Some(0) => return Ok(0),
             Some(ref mut count) => *count -= 1,
@@ -540,7 +541,7 @@ impl Write for ProgrammableSink {
 
     fn flush(&mut self) -> io::Result<()> {
         if self.always_flush_error {
-            Err(Error::InvalidInput)
+            Err(Error::new(ErrorKind::Other, "test - always_flush_error"))
         } else {
             Ok(())
         }
@@ -679,7 +680,7 @@ fn line_buffer_write0_error() {
     // needs to be an error, because we've already informed the client
     // that we accepted the write.
     let err = writer.write(b" Line End\n").unwrap_err();
-    assert_eq!(err, Error::WriteZero);
+    assert_eq!(err.kind(), ErrorKind::WriteZero);
     assert_eq!(&writer.get_ref().buffer, b"Line 1\n");
 }
 
