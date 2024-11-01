@@ -1,7 +1,9 @@
 #[cfg(test)]
 mod tests;
 
-use crate::{BorrowedCursor, BufRead, Read, Seek, SeekFrom, SizeHint, Write};
+use crate::{
+    error::ErrorKind, BorrowedCursor, BufRead, Error, Read, Seek, SeekFrom, SizeHint, Write,
+};
 use alloc::{fmt, string::String, vec::Vec};
 #[non_exhaustive]
 #[derive(Copy, Clone, Debug, Default)]
@@ -103,10 +105,10 @@ impl Read for Repeat {
         Ok(())
     }
     fn read_to_end(&mut self, _: &mut Vec<u8>) -> crate::Result<usize> {
-        Err(crate::Error::OutOfMemory)
+        Err(Error::from(ErrorKind::OutOfMemory))
     }
     fn read_to_string(&mut self, _: &mut String) -> crate::Result<usize> {
-        Err(crate::Error::OutOfMemory)
+        Err(Error::from(ErrorKind::OutOfMemory))
     }
 }
 impl SizeHint for Repeat {

@@ -1,4 +1,3 @@
-use crate::error::Error;
 use crate::{IntoInnerError, Seek, SeekFrom, Write, DEFAULT_BUF_SIZE};
 use alloc::fmt;
 use alloc::vec::Vec;
@@ -73,7 +72,10 @@ impl<W: ?Sized + Write> BufWriter<W> {
             self.panicked = false;
             match r {
                 Ok(0) => {
-                    return Err(Error::WriteZero);
+                    return Err(crate::const_io_error!(
+                        crate::error::ErrorKind::WriteZero,
+                        "failed to write the buffered data",
+                    ));
                 }
                 Ok(n) => guard.consume(n),
                 Err(ref e) if e.is_interrupted() => {}

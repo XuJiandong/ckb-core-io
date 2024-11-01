@@ -134,7 +134,7 @@ impl<R: ?Sized + Read> Read for BufReader<R> {
         } else {
             let mut bytes = Vec::new();
             self.read_to_end(&mut bytes)?;
-            let string = alloc::str::from_utf8(&bytes).map_err(|_| crate::Error::InvalidUtf8)?;
+            let string = alloc::str::from_utf8(&bytes).map_err(|_| crate::Error::INVALID_UTF8)?;
             *buf += string;
             Ok(string.len())
         }

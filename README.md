@@ -17,6 +17,17 @@ official implementation, this crate provides the necessary I/O functionality for
 * Drop-in replacement for `std::io` with identical semantics and API
 * Comprehensive I/O traits and types ported from the standard library
 
+## Rust Error Compatibility
+For Rust versions prior to 1.81.0, `core::error::Error` is not available in `no_std` environments. To maintain compatibility:
+
+- For Rust >= 1.81.0: No special configuration needed
+- For Rust < 1.81.0: Add the `rust_before_181` feature flag in your `Cargo.toml`:
+  ```toml
+  [dependencies]
+  ckb-core-io = { version = "...", features = ["rust_before_181"] }
+  ```
+We strongly recommend using Rust 1.81 or later as it provides better error handling features.
+
 ## Frequently Asked Questions
 
 ### What version of `std::io` is this ported from?

@@ -10,3 +10,10 @@ readme = "README.md"
 description = "A `no_std` compatible I/O module, ported from `std::io`."
 
 [dependencies]
+
+
+[features]
+default = []
+# since rust 1.81, the core::error::Error is stable
+# we need to add this feature to support old rust versions
+rust_before_181 = []

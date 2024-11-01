@@ -52,7 +52,7 @@ where
     let ret = f(g.buf);
     let appended = unsafe { g.buf.get_unchecked(g.len..) };
     if str::from_utf8(appended).is_err() {
-        ret.and(Err(Error::InvalidUtf8))
+        ret.and(Err(Error::INVALID_UTF8))
     } else {
         g.len = g.buf.len();
         ret
@@ -158,7 +158,7 @@ pub(crate) fn default_read_exact<R: Read + ?Sized>(this: &mut R, mut buf: &mut [
         }
     }
     if !buf.is_empty() {
-        Err(Error::ReadExactEof)
+        Err(Error::READ_EXACT_EOF)
     } else {
         Ok(())
     }
@@ -183,7 +183,7 @@ pub(crate) fn default_read_buf_exact<R: Read + ?Sized>(
             Err(e) => return Err(e),
         }
         if cursor.written() == prev_written {
-            return Err(Error::ReadExactEof);
+            return Err(Error::READ_EXACT_EOF);
         }
     }
     Ok(())
@@ -252,7 +252,7 @@ pub trait Write {
         while !buf.is_empty() {
             match self.write(buf) {
                 Ok(0) => {
-                    return Err(Error::WriteAllEof);
+                    return Err(Error::WRITE_ALL_EOF);
                 }
                 Ok(n) => buf = &buf[n..],
                 Err(ref e) if e.is_interrupted() => {}
