@@ -55,3 +55,14 @@ use ckb_core_io::{Read, Write};
 // After
 use core::io::{Read, Write};
 ```
+
+### What features are removed compared to std::io?
+Due to the lack of
+[specialization](https://github.com/rust-lang/rust/issues/31844) in stable Rust,
+the following optimizations and features have been removed:
+
+1. Optimized implementations of `copy()` for specific types
+2. Optimized `SizeHint` implementations for certain iterators
+
+The `read_vectored()` and related vectored I/O operations is removed due to
+limited use cases in no_std environments.
