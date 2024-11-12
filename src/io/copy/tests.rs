@@ -1,17 +1,8 @@
-use crate::cmp::{max, min};
-use crate::collections::VecDeque;
-use crate::io;
-use crate::io::*;
-
-#[test]
-fn copy_copies() {
-    let mut r = repeat(0).take(4);
-    let mut w = sink();
-    assert_eq!(copy(&mut r, &mut w).unwrap(), 4);
-
-    let mut r = repeat(0).take(1 << 17);
-    assert_eq!(copy(&mut r as &mut dyn Read, &mut w as &mut dyn Write).unwrap(), 1 << 17);
-}
+use core::cmp::{max, min};
+use alloc::collections::VecDeque;
+use crate as io;
+use io::*;
+use alloc::vec;
 
 struct ShortReader {
     cap: usize,
@@ -65,7 +56,7 @@ fn copy_specializes_bufreader() {
     let mut buffered = BufReader::with_capacity(256 * 1024, Cursor::new(&mut source));
 
     let mut sink = Vec::new();
-    assert_eq!(crate::io::copy(&mut buffered, &mut sink).unwrap(), source.len() as u64);
+    assert_eq!(io::copy(&mut buffered, &mut sink).unwrap(), source.len() as u64);
     assert_eq!(source.as_slice(), sink.as_slice());
 
     let buf_sz = 71 * 1024;
@@ -73,7 +64,7 @@ fn copy_specializes_bufreader() {
 
     let mut buffered = BufReader::with_capacity(buf_sz, Cursor::new(&mut source));
     let mut sink = WriteObserver { observed_buffer: 0 };
-    assert_eq!(crate::io::copy(&mut buffered, &mut sink).unwrap(), source.len() as u64);
+    assert_eq!(io::copy(&mut buffered, &mut sink).unwrap(), source.len() as u64);
     assert_eq!(
         sink.observed_buffer, buf_sz,
         "expected a large buffer to be provided to the writer"
@@ -115,33 +106,4 @@ fn copy_specializes_from_slice() {
     let mut sink = WriteObserver { observed_buffer: 0 };
     assert_eq!(60 * 1024u64, io::copy(&mut source, &mut sink).unwrap());
     assert_eq!(60 * 1024, sink.observed_buffer);
-}
-
-#[cfg(unix)]
-mod io_benches {
-    use crate::fs::File;
-    use crate::fs::OpenOptions;
-    use crate::io::prelude::*;
-    use crate::io::BufReader;
-
-    use test::Bencher;
-
-    #[bench]
-    fn bench_copy_buf_reader(b: &mut Bencher) {
-        let mut file_in = File::open("/dev/zero").expect("opening /dev/zero failed");
-        // use dyn to avoid specializations unrelated to readbuf
-        let dyn_in = &mut file_in as &mut dyn Read;
-        let mut reader = BufReader::with_capacity(256 * 1024, dyn_in.take(0));
-        let mut writer =
-            OpenOptions::new().write(true).open("/dev/null").expect("opening /dev/null failed");
-
-        const BYTES: u64 = 1024 * 1024;
-
-        b.bytes = BYTES;
-
-        b.iter(|| {
-            reader.get_mut().set_limit(BYTES);
-            crate::io::copy(&mut reader, &mut writer).unwrap()
-        });
-    }
 }

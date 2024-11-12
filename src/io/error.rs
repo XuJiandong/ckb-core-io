@@ -1,20 +1,12 @@
-#[cfg(test)]
-mod tests;
+use alloc::{boxed::Box, fmt};
+use core::result;
 
-#[cfg(all(target_pointer_width = "64", not(target_os = "uefi")))]
-mod repr_bitpacked;
-#[cfg(all(target_pointer_width = "64", not(target_os = "uefi")))]
-use repr_bitpacked::Repr;
-
-#[cfg(any(not(target_pointer_width = "64"), target_os = "uefi"))]
-mod repr_unpacked;
-#[cfg(any(not(target_pointer_width = "64"), target_os = "uefi"))]
-use repr_unpacked::Repr;
-
-use crate::error;
-use crate::fmt;
-use crate::result;
-use crate::sys;
+pub mod core_error {
+    #[cfg(feature = "rust_before_181")]
+    pub use crate::io::cherry_picking::error::Error;
+    #[cfg(not(feature = "rust_before_181"))]
+    pub use core::error::Error;
+}
 
 /// A specialized [`Result`] type for I/O operations.
 ///
@@ -50,7 +42,6 @@ use crate::sys;
 ///     Ok(buffer)
 /// }
 /// ```
-#[stable(feature = "rust1", since = "1.0.0")]
 pub type Result<T> = result::Result<T, Error>;
 
 /// The error type for I/O operations of the [`Read`], [`Write`], [`Seek`], and
@@ -63,19 +54,48 @@ pub type Result<T> = result::Result<T, Error>;
 /// [`Read`]: crate::io::Read
 /// [`Write`]: crate::io::Write
 /// [`Seek`]: crate::io::Seek
-#[stable(feature = "rust1", since = "1.0.0")]
-pub struct Error {
-    repr: Repr,
+
+pub enum Error {
+    Os(i64),
+    Simple(ErrorKind),
+    SimpleMessage(&'static SimpleMessage),
+    Custom(Box<Custom>),
 }
 
-#[stable(feature = "rust1", since = "1.0.0")]
-impl fmt::Debug for Error {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Debug::fmt(&self.repr, f)
+impl Error {
+    pub fn new_simple(kind: ErrorKind) -> Self {
+        Self::Simple(kind)
+    }
+    pub fn new_custom(custom: Box<Custom>) -> Self {
+        Self::Custom(custom)
+    }
+    pub const fn new_simple_message(msg: &'static SimpleMessage) -> Self {
+        Self::SimpleMessage(msg)
+    }
+    pub fn new_os(code: i64) -> Self {
+        Self::Os(code)
     }
 }
 
-/// Common errors constants for use in std
+impl fmt::Debug for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Debug::fmt(&self, f)
+    }
+}
+
+/// Create and return an `io::Error` for a given `ErrorKind` and constant
+/// message. This doesn't allocate.
+#[macro_export]
+macro_rules! const_io_error {
+    ($kind:expr, $message:expr $(,)?) => {
+        $crate::io::error::Error::from_static_message({
+            const MESSAGE_DATA: $crate::io::error::SimpleMessage =
+                $crate::io::error::SimpleMessage::new($kind, $message);
+            &MESSAGE_DATA
+        })
+    };
+}
+
 #[allow(dead_code)]
 impl Error {
     pub(crate) const INVALID_UTF8: Self =
@@ -89,8 +109,10 @@ impl Error {
         "The number of hardware threads is not known for the target platform"
     );
 
-    pub(crate) const UNSUPPORTED_PLATFORM: Self =
-        const_io_error!(ErrorKind::Unsupported, "operation not supported on this platform");
+    pub(crate) const UNSUPPORTED_PLATFORM: Self = const_io_error!(
+        ErrorKind::Unsupported,
+        "operation not supported on this platform"
+    );
 
     pub(crate) const WRITE_ALL_EOF: Self =
         const_io_error!(ErrorKind::WriteZero, "failed to write whole buffer");
@@ -99,7 +121,6 @@ impl Error {
         const_io_error!(ErrorKind::InvalidInput, "cannot set a 0 duration timeout");
 }
 
-#[stable(feature = "rust1", since = "1.0.0")]
 impl From<alloc::ffi::NulError> for Error {
     /// Converts a [`alloc::ffi::NulError`] into a [`Error`].
     fn from(_: alloc::ffi::NulError) -> Error {
@@ -107,7 +128,6 @@ impl From<alloc::ffi::NulError> for Error {
     }
 }
 
-#[stable(feature = "io_error_from_try_reserve", since = "1.78.0")]
 impl From<alloc::collections::TryReserveError> for Error {
     /// Converts `TryReserveError` to an error with [`ErrorKind::OutOfMemory`].
     ///
@@ -118,27 +138,6 @@ impl From<alloc::collections::TryReserveError> for Error {
         ErrorKind::OutOfMemory.into()
     }
 }
-
-// Only derive debug in tests, to make sure it
-// doesn't accidentally get printed.
-#[cfg_attr(test, derive(Debug))]
-enum ErrorData<C> {
-    Os(RawOsError),
-    Simple(ErrorKind),
-    SimpleMessage(&'static SimpleMessage),
-    Custom(C),
-}
-
-/// The type of raw OS error codes returned by [`Error::raw_os_error`].
-///
-/// This is an [`i32`] on all currently supported platforms, but platforms
-/// added in the future (such as UEFI) may use a different primitive type like
-/// [`usize`]. Use `as`or [`into`] conversions where applicable to ensure maximum
-/// portability.
-///
-/// [`into`]: Into::into
-#[unstable(feature = "raw_os_error_ty", issue = "107792")]
-pub type RawOsError = sys::RawOsError;
 
 // `#[repr(align(4))]` is probably redundant, it should have that value or
 // higher already. We include it just because repr_bitpacked.rs's encoding
@@ -156,7 +155,7 @@ pub type RawOsError = sys::RawOsError;
 // matter at all)
 #[repr(align(4))]
 #[derive(Debug)]
-pub(crate) struct SimpleMessage {
+pub struct SimpleMessage {
     kind: ErrorKind,
     message: &'static str,
 }
@@ -167,26 +166,15 @@ impl SimpleMessage {
     }
 }
 
-/// Create and return an `io::Error` for a given `ErrorKind` and constant
-/// message. This doesn't allocate.
-pub(crate) macro const_io_error($kind:expr, $message:expr $(,)?) {
-    $crate::io::error::Error::from_static_message({
-        const MESSAGE_DATA: $crate::io::error::SimpleMessage =
-            $crate::io::error::SimpleMessage::new($kind, $message);
-        &MESSAGE_DATA
-    })
-}
-
 // As with `SimpleMessage`: `#[repr(align(4))]` here is just because
 // repr_bitpacked's encoding requires it. In practice it almost certainly be
 // already be this high or higher.
 #[derive(Debug)]
 #[repr(align(4))]
-struct Custom {
+pub struct Custom {
     kind: ErrorKind,
-    error: Box<dyn error::Error + Send + Sync>,
+    error: Box<dyn core_error::Error + Send + Sync>,
 }
-
 /// A list specifying general categories of I/O error.
 ///
 /// This list is intended to grow over time and it is not recommended to
@@ -209,71 +197,52 @@ struct Custom {
 /// produce an unrecognized error kind, the robust solution is to check for all
 /// the recognized error kinds and fail in those cases.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[stable(feature = "rust1", since = "1.0.0")]
 #[allow(deprecated)]
 #[non_exhaustive]
 pub enum ErrorKind {
     /// An entity was not found, often a file.
-    #[stable(feature = "rust1", since = "1.0.0")]
     NotFound,
     /// The operation lacked the necessary privileges to complete.
-    #[stable(feature = "rust1", since = "1.0.0")]
     PermissionDenied,
     /// The connection was refused by the remote server.
-    #[stable(feature = "rust1", since = "1.0.0")]
     ConnectionRefused,
     /// The connection was reset by the remote server.
-    #[stable(feature = "rust1", since = "1.0.0")]
     ConnectionReset,
     /// The remote host is not reachable.
-    #[unstable(feature = "io_error_more", issue = "86442")]
     HostUnreachable,
     /// The network containing the remote host is not reachable.
-    #[unstable(feature = "io_error_more", issue = "86442")]
     NetworkUnreachable,
     /// The connection was aborted (terminated) by the remote server.
-    #[stable(feature = "rust1", since = "1.0.0")]
     ConnectionAborted,
     /// The network operation failed because it was not connected yet.
-    #[stable(feature = "rust1", since = "1.0.0")]
     NotConnected,
     /// A socket address could not be bound because the address is already in
     /// use elsewhere.
-    #[stable(feature = "rust1", since = "1.0.0")]
     AddrInUse,
     /// A nonexistent interface was requested or the requested address was not
     /// local.
-    #[stable(feature = "rust1", since = "1.0.0")]
     AddrNotAvailable,
     /// The system's networking is down.
-    #[unstable(feature = "io_error_more", issue = "86442")]
     NetworkDown,
     /// The operation failed because a pipe was closed.
-    #[stable(feature = "rust1", since = "1.0.0")]
     BrokenPipe,
     /// An entity already exists, often a file.
-    #[stable(feature = "rust1", since = "1.0.0")]
     AlreadyExists,
     /// The operation needs to block to complete, but the blocking operation was
     /// requested to not occur.
-    #[stable(feature = "rust1", since = "1.0.0")]
     WouldBlock,
     /// A filesystem object is, unexpectedly, not a directory.
     ///
     /// For example, a filesystem path was specified where one of the intermediate directory
     /// components was, in fact, a plain file.
-    #[unstable(feature = "io_error_more", issue = "86442")]
     NotADirectory,
     /// The filesystem object is, unexpectedly, a directory.
     ///
     /// A directory was specified when a non-directory was expected.
-    #[unstable(feature = "io_error_more", issue = "86442")]
     IsADirectory,
     /// A non-empty directory was specified where an empty directory was expected.
-    #[unstable(feature = "io_error_more", issue = "86442")]
     DirectoryNotEmpty,
     /// The filesystem or storage medium is read-only, but a write operation was attempted.
-    #[unstable(feature = "io_error_more", issue = "86442")]
     ReadOnlyFilesystem,
     /// Loop in the filesystem or IO subsystem; often, too many levels of symbolic links.
     ///
@@ -282,16 +251,13 @@ pub enum ErrorKind {
     ///
     /// On Unix this is usually the result of a symbolic link loop; or, of exceeding the
     /// system-specific limit on the depth of symlink traversal.
-    #[unstable(feature = "io_error_more", issue = "86442")]
     FilesystemLoop,
     /// Stale network file handle.
     ///
     /// With some network filesystems, notably NFS, an open file (or directory) can be invalidated
     /// by problems with the network or server.
-    #[unstable(feature = "io_error_more", issue = "86442")]
     StaleNetworkFileHandle,
     /// A parameter was incorrect.
-    #[stable(feature = "rust1", since = "1.0.0")]
     InvalidInput,
     /// Data not valid for the operation were encountered.
     ///
@@ -303,10 +269,8 @@ pub enum ErrorKind {
     /// `InvalidData` if the file's contents are not valid UTF-8.
     ///
     /// [`InvalidInput`]: ErrorKind::InvalidInput
-    #[stable(feature = "io_invalid_data", since = "1.2.0")]
     InvalidData,
     /// The I/O operation's timeout expired, causing it to be canceled.
-    #[stable(feature = "rust1", since = "1.0.0")]
     TimedOut,
     /// An error returned when an operation could not be completed because a
     /// call to [`write`] returned [`Ok(0)`].
@@ -317,73 +281,59 @@ pub enum ErrorKind {
     ///
     /// [`write`]: crate::io::Write::write
     /// [`Ok(0)`]: Ok
-    #[stable(feature = "rust1", since = "1.0.0")]
     WriteZero,
     /// The underlying storage (typically, a filesystem) is full.
     ///
     /// This does not include out of quota errors.
-    #[unstable(feature = "io_error_more", issue = "86442")]
     StorageFull,
     /// Seek on unseekable file.
     ///
     /// Seeking was attempted on an open file handle which is not suitable for seeking - for
     /// example, on Unix, a named pipe opened with `File::open`.
-    #[unstable(feature = "io_error_more", issue = "86442")]
     NotSeekable,
     /// Filesystem quota was exceeded.
-    #[unstable(feature = "io_error_more", issue = "86442")]
     FilesystemQuotaExceeded,
     /// File larger than allowed or supported.
     ///
     /// This might arise from a hard limit of the underlying filesystem or file access API, or from
     /// an administratively imposed resource limitation.  Simple disk full, and out of quota, have
     /// their own errors.
-    #[unstable(feature = "io_error_more", issue = "86442")]
     FileTooLarge,
     /// Resource is busy.
-    #[unstable(feature = "io_error_more", issue = "86442")]
     ResourceBusy,
     /// Executable file is busy.
     ///
     /// An attempt was made to write to a file which is also in use as a running program.  (Not all
     /// operating systems detect this situation.)
-    #[unstable(feature = "io_error_more", issue = "86442")]
     ExecutableFileBusy,
     /// Deadlock (avoided).
     ///
     /// A file locking operation would result in deadlock.  This situation is typically detected, if
     /// at all, on a best-effort basis.
-    #[unstable(feature = "io_error_more", issue = "86442")]
     Deadlock,
     /// Cross-device or cross-filesystem (hard) link or rename.
-    #[unstable(feature = "io_error_more", issue = "86442")]
     CrossesDevices,
     /// Too many (hard) links to the same filesystem object.
     ///
     /// The filesystem does not support making so many hardlinks to the same file.
-    #[unstable(feature = "io_error_more", issue = "86442")]
     TooManyLinks,
     /// A filename was invalid.
     ///
     /// This error can also cause if it exceeded the filename length limit.
-    #[unstable(feature = "io_error_more", issue = "86442")]
     InvalidFilename,
     /// Program argument list too long.
     ///
     /// When trying to run an external program, a system or process limit on the size of the
     /// arguments would have been exceeded.
-    #[unstable(feature = "io_error_more", issue = "86442")]
     ArgumentListTooLong,
     /// This operation was interrupted.
     ///
     /// Interrupted operations can typically be retried.
-    #[stable(feature = "rust1", since = "1.0.0")]
     Interrupted,
 
     /// This operation is unsupported on this platform.
     ///
     /// This means that the operation can never succeed.
-    #[stable(feature = "unsupported_error", since = "1.53.0")]
     Unsupported,
 
     // ErrorKinds which are primarily categorisations for OS error
@@ -395,12 +345,10 @@ pub enum ErrorKind {
     /// This typically means that an operation could only succeed if it read a
     /// particular number of bytes but only a smaller number of bytes could be
     /// read.
-    #[stable(feature = "read_exact", since = "1.6.0")]
     UnexpectedEof,
 
     /// An operation could not be completed, because it failed
     /// to allocate enough memory.
-    #[stable(feature = "out_of_memory_error", since = "1.54.0")]
     OutOfMemory,
 
     // "Unusual" error kinds which do not correspond simply to (sets
@@ -417,7 +365,6 @@ pub enum ErrorKind {
     /// Errors from the standard library that do not fall under any of the I/O
     /// error kinds cannot be `match`ed on, and will only match a wildcard (`_`) pattern.
     /// New [`ErrorKind`]s might be added in the future for some of those.
-    #[stable(feature = "rust1", since = "1.0.0")]
     Other,
 
     /// Any I/O error from the standard library that's not part of this list.
@@ -425,7 +372,6 @@ pub enum ErrorKind {
     /// Errors that are `Uncategorized` now may move to a different or a new
     /// [`ErrorKind`] variant in the future. It is not recommended to match
     /// an error against `Uncategorized`; use a wildcard match (`_`) instead.
-    #[unstable(feature = "io_error_uncategorized", issue = "none")]
     #[doc(hidden)]
     Uncategorized,
 }
@@ -481,7 +427,6 @@ impl ErrorKind {
     }
 }
 
-#[stable(feature = "io_errorkind_display", since = "1.60.0")]
 impl fmt::Display for ErrorKind {
     /// Shows a human-readable description of the `ErrorKind`.
     ///
@@ -499,7 +444,6 @@ impl fmt::Display for ErrorKind {
 
 /// Intended for use for errors not exposed to the user, where allocating onto
 /// the heap (for normal construction via Error::new) is too costly.
-#[stable(feature = "io_error_from_errorkind", since = "1.14.0")]
 impl From<ErrorKind> for Error {
     /// Converts an [`ErrorKind`] into an [`Error`].
     ///
@@ -516,7 +460,7 @@ impl From<ErrorKind> for Error {
     /// ```
     #[inline]
     fn from(kind: ErrorKind) -> Error {
-        Error { repr: Repr::new_simple(kind) }
+        Error::new_simple(kind)
     }
 }
 
@@ -546,11 +490,10 @@ impl Error {
     /// // creating an error without payload (and without memory allocation)
     /// let eof_error = Error::from(ErrorKind::UnexpectedEof);
     /// ```
-    #[stable(feature = "rust1", since = "1.0.0")]
     #[inline(never)]
     pub fn new<E>(kind: ErrorKind, error: E) -> Error
     where
-        E: Into<Box<dyn error::Error + Send + Sync>>,
+        E: Into<Box<dyn core_error::Error + Send + Sync>>,
     {
         Self::_new(kind, error.into())
     }
@@ -572,16 +515,15 @@ impl Error {
     /// // errors can also be created from other errors
     /// let custom_error2 = Error::other(custom_error);
     /// ```
-    #[stable(feature = "io_error_other", since = "1.74.0")]
     pub fn other<E>(error: E) -> Error
     where
-        E: Into<Box<dyn error::Error + Send + Sync>>,
+        E: Into<Box<dyn core_error::Error + Send + Sync>>,
     {
         Self::_new(ErrorKind::Other, error.into())
     }
 
-    fn _new(kind: ErrorKind, error: Box<dyn error::Error + Send + Sync>) -> Error {
-        Error { repr: Repr::new_custom(Box::new(Custom { kind, error })) }
+    fn _new(kind: ErrorKind, error: Box<dyn core_error::Error + Send + Sync>) -> Error {
+        Error::new_custom(Box::new(Custom { kind, error }))
     }
 
     /// Creates a new I/O error from a known kind of error as well as a constant
@@ -596,37 +538,10 @@ impl Error {
     /// str>(kind: ErrorKind)` in the future, when const generics allow that.
     #[inline]
     pub(crate) const fn from_static_message(msg: &'static SimpleMessage) -> Error {
-        Self { repr: Repr::new_simple_message(msg) }
+        Error::new_simple_message(msg)
     }
 
-    /// Returns an error representing the last OS error which occurred.
-    ///
-    /// This function reads the value of `errno` for the target platform (e.g.
-    /// `GetLastError` on Windows) and will return a corresponding instance of
-    /// [`Error`] for the error code.
-    ///
-    /// This should be called immediately after a call to a platform function,
-    /// otherwise the state of the error value is indeterminate. In particular,
-    /// other standard library functions may call platform functions that may
-    /// (or may not) reset the error value even if they succeed.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use std::io::Error;
-    ///
-    /// let os_error = Error::last_os_error();
-    /// println!("last OS error: {os_error:?}");
-    /// ```
-    #[stable(feature = "rust1", since = "1.0.0")]
-    #[doc(alias = "GetLastError")]
-    #[doc(alias = "errno")]
-    #[must_use]
     #[inline]
-    pub fn last_os_error() -> Error {
-        Error::from_raw_os_error(sys::os::errno())
-    }
-
     /// Creates a new instance of an [`Error`] from a particular OS error code.
     ///
     /// # Examples
@@ -652,11 +567,8 @@ impl Error {
     /// assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
     /// # }
     /// ```
-    #[stable(feature = "rust1", since = "1.0.0")]
-    #[must_use]
-    #[inline]
-    pub fn from_raw_os_error(code: RawOsError) -> Error {
-        Error { repr: Repr::new_os(code) }
+    pub fn from_raw_os_error(code: i64) -> Error {
+        Error::new_os(code)
     }
 
     /// Returns the OS error that this error represents (if any).
@@ -688,18 +600,15 @@ impl Error {
     ///     print_os_error(&Error::new(ErrorKind::Other, "oh no!"));
     /// }
     /// ```
-    #[stable(feature = "rust1", since = "1.0.0")]
-    #[must_use]
     #[inline]
-    pub fn raw_os_error(&self) -> Option<RawOsError> {
-        match self.repr.data() {
-            ErrorData::Os(i) => Some(i),
-            ErrorData::Custom(..) => None,
-            ErrorData::Simple(..) => None,
-            ErrorData::SimpleMessage(..) => None,
+    pub fn raw_os_error(&self) -> Option<i64> {
+        match self {
+            Error::Os(i) => Some(*i),
+            Error::Custom(..) => None,
+            Error::Simple(..) => None,
+            Error::SimpleMessage(..) => None,
         }
     }
-
     /// Returns a reference to the inner error wrapped by this error (if any).
     ///
     /// If this [`Error`] was constructed via [`new`] then this function will
@@ -727,15 +636,13 @@ impl Error {
     ///     print_error(&Error::new(ErrorKind::Other, "oh no!"));
     /// }
     /// ```
-    #[stable(feature = "io_error_inner", since = "1.3.0")]
-    #[must_use]
     #[inline]
-    pub fn get_ref(&self) -> Option<&(dyn error::Error + Send + Sync + 'static)> {
-        match self.repr.data() {
-            ErrorData::Os(..) => None,
-            ErrorData::Simple(..) => None,
-            ErrorData::SimpleMessage(..) => None,
-            ErrorData::Custom(c) => Some(&*c.error),
+    pub fn get_ref(&self) -> Option<&(dyn core_error::Error + Send + Sync + 'static)> {
+        match self {
+            Error::Os(..) => None,
+            Error::Simple(..) => None,
+            Error::SimpleMessage(..) => None,
+            Error::Custom(c) => Some(&*c.error),
         }
     }
 
@@ -801,18 +708,16 @@ impl Error {
     ///     print_error(&change_error(Error::new(ErrorKind::Other, MyError::new())));
     /// }
     /// ```
-    #[stable(feature = "io_error_inner", since = "1.3.0")]
     #[must_use]
     #[inline]
-    pub fn get_mut(&mut self) -> Option<&mut (dyn error::Error + Send + Sync + 'static)> {
-        match self.repr.data_mut() {
-            ErrorData::Os(..) => None,
-            ErrorData::Simple(..) => None,
-            ErrorData::SimpleMessage(..) => None,
-            ErrorData::Custom(c) => Some(&mut *c.error),
+    pub fn get_mut(&mut self) -> Option<&mut (dyn core_error::Error + Send + Sync + 'static)> {
+        match self {
+            Error::Os(..) => None,
+            Error::Simple(..) => None,
+            Error::SimpleMessage(..) => None,
+            Error::Custom(c) => Some(&mut *c.error),
         }
     }
-
     /// Consumes the `Error`, returning its inner error (if any).
     ///
     /// If this [`Error`] was constructed via [`new`] then this function will
@@ -840,18 +745,16 @@ impl Error {
     ///     print_error(Error::new(ErrorKind::Other, "oh no!"));
     /// }
     /// ```
-    #[stable(feature = "io_error_inner", since = "1.3.0")]
     #[must_use = "`self` will be dropped if the result is not used"]
     #[inline]
-    pub fn into_inner(self) -> Option<Box<dyn error::Error + Send + Sync>> {
-        match self.repr.into_data() {
-            ErrorData::Os(..) => None,
-            ErrorData::Simple(..) => None,
-            ErrorData::SimpleMessage(..) => None,
-            ErrorData::Custom(c) => Some(c.error),
+    pub fn into_inner(self) -> Option<Box<dyn core_error::Error + Send + Sync>> {
+        match self {
+            Error::Os(..) => None,
+            Error::Simple(..) => None,
+            Error::SimpleMessage(..) => None,
+            Error::Custom(c) => Some(c.error),
         }
     }
-
     /// Attempt to downcast the custom boxed error to `E`.
     ///
     /// If this [`Error`] contains a custom boxed error,
@@ -921,24 +824,17 @@ impl Error {
     /// assert!(io_error.raw_os_error().is_none());
     /// # }
     /// ```
-    #[stable(feature = "io_error_downcast", since = "1.79.0")]
+    #[cfg(not(feature = "rust_before_181"))]
     pub fn downcast<E>(self) -> result::Result<E, Self>
     where
-        E: error::Error + Send + Sync + 'static,
+        E: core_error::Error + Send + Sync + 'static,
     {
-        match self.repr.into_data() {
-            ErrorData::Custom(b) if b.error.is::<E>() => {
-                let res = (*b).error.downcast::<E>();
-
-                // downcast is a really trivial and is marked as inline, so
-                // it's likely be inlined here.
-                //
-                // And the compiler should be able to eliminate the branch
-                // that produces `Err` here since b.error.is::<E>()
-                // returns true.
+        match self {
+            Error::Custom(b) if b.error.is::<E>() => {
+                let res = b.error.downcast::<E>();
                 Ok(*res.unwrap())
             }
-            repr_data => Err(Self { repr: Repr::new(repr_data) }),
+            err => Err(err),
         }
     }
 
@@ -968,91 +864,67 @@ impl Error {
     ///     print_error(Error::new(ErrorKind::AddrInUse, "oh no!"));
     /// }
     /// ```
-    #[stable(feature = "rust1", since = "1.0.0")]
     #[must_use]
     #[inline]
     pub fn kind(&self) -> ErrorKind {
-        match self.repr.data() {
-            ErrorData::Os(code) => sys::decode_error_kind(code),
-            ErrorData::Custom(c) => c.kind,
-            ErrorData::Simple(kind) => kind,
-            ErrorData::SimpleMessage(m) => m.kind,
+        match self {
+            Error::Os(..) => ErrorKind::Other,
+            Error::Custom(c) => c.kind,
+            Error::Simple(kind) => *kind,
+            Error::SimpleMessage(m) => m.kind,
         }
     }
 
     #[inline]
     pub(crate) fn is_interrupted(&self) -> bool {
-        match self.repr.data() {
-            ErrorData::Os(code) => sys::is_interrupted(code),
-            ErrorData::Custom(c) => c.kind == ErrorKind::Interrupted,
-            ErrorData::Simple(kind) => kind == ErrorKind::Interrupted,
-            ErrorData::SimpleMessage(m) => m.kind == ErrorKind::Interrupted,
+        match self {
+            Error::Os(..) => false,
+            Error::Custom(c) => c.kind == ErrorKind::Interrupted,
+            Error::Simple(kind) => *kind == ErrorKind::Interrupted,
+            Error::SimpleMessage(m) => m.kind == ErrorKind::Interrupted,
         }
     }
 }
 
-impl fmt::Debug for Repr {
-    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.data() {
-            ErrorData::Os(code) => fmt
-                .debug_struct("Os")
-                .field("code", &code)
-                .field("kind", &sys::decode_error_kind(code))
-                .field("message", &sys::os::error_string(code))
-                .finish(),
-            ErrorData::Custom(c) => fmt::Debug::fmt(&c, fmt),
-            ErrorData::Simple(kind) => fmt.debug_tuple("Kind").field(&kind).finish(),
-            ErrorData::SimpleMessage(msg) => fmt
-                .debug_struct("Error")
-                .field("kind", &msg.kind)
-                .field("message", &msg.message)
-                .finish(),
-        }
-    }
-}
-
-#[stable(feature = "rust1", since = "1.0.0")]
 impl fmt::Display for Error {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.repr.data() {
-            ErrorData::Os(code) => {
-                let detail = sys::os::error_string(code);
-                write!(fmt, "{detail} (os error {code})")
+        match self {
+            Error::Os(code) => {
+                write!(fmt, "os error {code}")
             }
-            ErrorData::Custom(ref c) => c.error.fmt(fmt),
-            ErrorData::Simple(kind) => write!(fmt, "{}", kind.as_str()),
-            ErrorData::SimpleMessage(msg) => msg.message.fmt(fmt),
+            Error::Custom(ref c) => c.error.fmt(fmt),
+            Error::Simple(kind) => write!(fmt, "{}", kind.as_str()),
+            Error::SimpleMessage(msg) => msg.message.fmt(fmt),
         }
     }
 }
 
-#[stable(feature = "rust1", since = "1.0.0")]
-impl error::Error for Error {
+impl core_error::Error for Error {
     #[allow(deprecated, deprecated_in_future)]
     fn description(&self) -> &str {
-        match self.repr.data() {
-            ErrorData::Os(..) | ErrorData::Simple(..) => self.kind().as_str(),
-            ErrorData::SimpleMessage(msg) => msg.message,
-            ErrorData::Custom(c) => c.error.description(),
+        match self {
+            Error::Os(..) | Error::Simple(..) => self.kind().as_str(),
+            Error::SimpleMessage(msg) => msg.message,
+            Error::Custom(c) => c.error.description(),
         }
     }
 
     #[allow(deprecated)]
-    fn cause(&self) -> Option<&dyn error::Error> {
-        match self.repr.data() {
-            ErrorData::Os(..) => None,
-            ErrorData::Simple(..) => None,
-            ErrorData::SimpleMessage(..) => None,
-            ErrorData::Custom(c) => c.error.cause(),
+    fn cause(&self) -> Option<&dyn core_error::Error> {
+        match self {
+            Error::Os(..) => None,
+            Error::Simple(..) => None,
+            Error::SimpleMessage(..) => None,
+            Error::Custom(c) => c.error.cause(),
         }
     }
 
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
-        match self.repr.data() {
-            ErrorData::Os(..) => None,
-            ErrorData::Simple(..) => None,
-            ErrorData::SimpleMessage(..) => None,
-            ErrorData::Custom(c) => c.error.source(),
+    fn source(&self) -> Option<&(dyn core_error::Error + 'static)> {
+        match self {
+            Error::Os(..) => None,
+            Error::Simple(..) => None,
+            Error::SimpleMessage(..) => None,
+            Error::Custom(c) => c.error.source(),
         }
     }
 }
