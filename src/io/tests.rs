@@ -3,11 +3,9 @@ use alloc::vec;
 use alloc::vec::Vec;
 
 use super::{BorrowedBuf, Cursor, SeekFrom};
-use crate as io;
-use crate::cmp;
-use crate::error::ErrorKind;
-use crate::{BufRead, BufReader, Read, Seek};
-use crate::{Error, DEFAULT_BUF_SIZE};
+use crate::io;
+use crate::io::{cmp, error::ErrorKind, BufRead, BufReader, Read, Seek};
+use crate::io::{Error, DEFAULT_BUF_SIZE};
 
 #[test]
 #[cfg_attr(target_os = "emscripten", ignore)]
@@ -161,7 +159,7 @@ fn read_exact() {
     let mut c = Cursor::new(&b""[..]);
     assert_eq!(
         c.read_exact(&mut buf).unwrap_err().kind(),
-        crate::error::ErrorKind::UnexpectedEof
+        io::error::ErrorKind::UnexpectedEof
     );
 
     let mut c = Cursor::new(&b"123"[..]).chain(Cursor::new(&b"456789"[..]));
@@ -171,7 +169,7 @@ fn read_exact() {
     assert_eq!(&buf, b"5678");
     assert_eq!(
         c.read_exact(&mut buf).unwrap_err().kind(),
-        crate::error::ErrorKind::UnexpectedEof
+        io::error::ErrorKind::UnexpectedEof
     );
 }
 
@@ -182,13 +180,13 @@ fn read_exact_slice() {
     let mut c = &b""[..];
     assert_eq!(
         c.read_exact(&mut buf).unwrap_err().kind(),
-        crate::error::ErrorKind::UnexpectedEof
+        io::error::ErrorKind::UnexpectedEof
     );
 
     let mut c = &b"123"[..];
     assert_eq!(
         c.read_exact(&mut buf).unwrap_err().kind(),
-        crate::error::ErrorKind::UnexpectedEof
+        io::error::ErrorKind::UnexpectedEof
     );
     // make sure the optimized (early returning) method is being used
     assert_eq!(&buf, &[0; 4]);
@@ -303,7 +301,7 @@ fn chain_bufread() {
 #[test]
 fn chain_splitted_char() {
     let chain = b"\xc3".chain(b"\xa9".as_slice());
-    assert_eq!(crate::read_to_string(chain).unwrap(), "é");
+    assert_eq!(io::read_to_string(chain).unwrap(), "é");
 
     let mut chain = b"\xc3".chain(b"\xa9\n".as_slice());
     let mut buf = String::new();
@@ -492,10 +490,10 @@ fn read_buf_full_read() {
 // 64-bit only to be sure the allocator will fail fast on an impossible to satsify size
 #[cfg(target_pointer_width = "64")]
 fn try_oom_error() {
-    use crate::error::ErrorKind;
+    use crate::io;
 
     let mut v = Vec::<u8>::new();
     let reserve_err = v.try_reserve(isize::MAX as usize - 1).unwrap_err();
     let io_err = io::Error::from(reserve_err);
-    assert_eq!(ErrorKind::OutOfMemory, io_err.kind());
+    assert_eq!(io::error::ErrorKind::OutOfMemory, io_err.kind());
 }

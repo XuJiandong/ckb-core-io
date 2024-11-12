@@ -6,7 +6,7 @@ mod linewritershim;
 mod tests;
 
 pub use self::{bufreader::BufReader, bufwriter::BufWriter, linewriter::LineWriter};
-use crate::Error;
+use crate::io::error::Error;
 pub use bufwriter::WriterPanicked;
 use linewritershim::LineWriterShim;
 #[derive(Debug)]

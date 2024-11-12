@@ -3,10 +3,10 @@ use alloc::string::{String, ToString};
 use alloc::vec;
 use alloc::vec::Vec;
 
-use crate as io;
-use crate::error::ErrorKind;
-use crate::{prelude::*, Error};
-use crate::{BorrowedBuf, BufReader, BufWriter, LineWriter, SeekFrom};
+use crate::io;
+use crate::io::error::ErrorKind;
+use crate::io::{prelude::*, Error};
+use crate::io::{BorrowedBuf, BufReader, BufWriter, LineWriter, SeekFrom};
 use core::mem::MaybeUninit;
 use core::panic;
 
@@ -815,7 +815,7 @@ struct WriteRecorder {
 
 impl Write for WriteRecorder {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        use crate::str::from_utf8;
+        use alloc::str::from_utf8;
 
         self.events
             .push(RecordedEvent::Write(from_utf8(buf).unwrap().to_string()));

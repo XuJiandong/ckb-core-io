@@ -1,4 +1,4 @@
-use crate::{IntoInnerError, Seek, SeekFrom, Write, DEFAULT_BUF_SIZE};
+use crate::io::{self, IntoInnerError, Seek, SeekFrom, Write, DEFAULT_BUF_SIZE};
 use alloc::fmt;
 use alloc::vec::Vec;
 use core::error;
@@ -39,7 +39,7 @@ impl<W: Write> BufWriter<W> {
     }
 }
 impl<W: ?Sized + Write> BufWriter<W> {
-    pub(crate) fn flush_buf(&mut self) -> crate::Result<()> {
+    pub(crate) fn flush_buf(&mut self) -> io::Result<()> {
         struct BufGuard<'a> {
             buffer: &'a mut Vec<u8>,
             written: usize,
@@ -73,7 +73,7 @@ impl<W: ?Sized + Write> BufWriter<W> {
             match r {
                 Ok(0) => {
                     return Err(crate::const_io_error!(
-                        crate::error::ErrorKind::WriteZero,
+                        crate::io::error::ErrorKind::WriteZero,
                         "failed to write the buffered data",
                     ));
                 }
@@ -110,7 +110,7 @@ impl<W: ?Sized + Write> BufWriter<W> {
     }
     #[cold]
     #[inline(never)]
-    fn write_cold(&mut self, buf: &[u8]) -> crate::Result<usize> {
+    fn write_cold(&mut self, buf: &[u8]) -> io::Result<usize> {
         if buf.len() > self.spare_capacity() {
             self.flush_buf()?;
         }
@@ -128,7 +128,7 @@ impl<W: ?Sized + Write> BufWriter<W> {
     }
     #[cold]
     #[inline(never)]
-    fn write_all_cold(&mut self, buf: &[u8]) -> crate::Result<()> {
+    fn write_all_cold(&mut self, buf: &[u8]) -> io::Result<()> {
         if buf.len() > self.spare_capacity() {
             self.flush_buf()?;
         }
@@ -194,7 +194,7 @@ impl fmt::Debug for WriterPanicked {
 }
 impl<W: ?Sized + Write> Write for BufWriter<W> {
     #[inline]
-    fn write(&mut self, buf: &[u8]) -> crate::Result<usize> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         if buf.len() < self.spare_capacity() {
             unsafe {
                 self.write_to_buffer_unchecked(buf);
@@ -205,7 +205,7 @@ impl<W: ?Sized + Write> Write for BufWriter<W> {
         }
     }
     #[inline]
-    fn write_all(&mut self, buf: &[u8]) -> crate::Result<()> {
+    fn write_all(&mut self, buf: &[u8]) -> io::Result<()> {
         if buf.len() < self.spare_capacity() {
             unsafe {
                 self.write_to_buffer_unchecked(buf);
@@ -218,7 +218,7 @@ impl<W: ?Sized + Write> Write for BufWriter<W> {
     fn is_write_vectored(&self) -> bool {
         true
     }
-    fn flush(&mut self) -> crate::Result<()> {
+    fn flush(&mut self) -> io::Result<()> {
         self.flush_buf().and_then(|()| self.get_mut().flush())
     }
 }
@@ -237,7 +237,7 @@ where
     }
 }
 impl<W: ?Sized + Write + Seek> Seek for BufWriter<W> {
-    fn seek(&mut self, pos: SeekFrom) -> crate::Result<u64> {
+    fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
         self.flush_buf()?;
         self.get_mut().seek(pos)
     }

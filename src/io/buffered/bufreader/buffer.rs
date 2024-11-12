@@ -1,7 +1,7 @@
 use alloc::boxed::Box;
 use alloc::vec;
 
-use crate::{BorrowedBuf, Read};
+use crate::io::{self, BorrowedBuf, Read};
 use core::cmp;
 use core::mem::MaybeUninit;
 pub struct Buffer {
@@ -73,7 +73,7 @@ impl Buffer {
         self.pos = self.pos.saturating_sub(amt);
     }
     #[inline]
-    pub fn fill_buf(&mut self, mut reader: impl Read) -> crate::Result<&[u8]> {
+    pub fn fill_buf(&mut self, mut reader: impl Read) -> io::Result<&[u8]> {
         if self.pos >= self.filled {
             debug_assert!(self.pos == self.filled);
             let mut buf = BorrowedBuf::from(&mut *self.buf);

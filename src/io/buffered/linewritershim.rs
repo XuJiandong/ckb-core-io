@@ -1,5 +1,5 @@
-use crate::cherry_picking::memchr;
-use crate::{BufWriter, Write};
+use crate::io::cherry_picking::memchr;
+use crate::io::{self, BufWriter, Write};
 
 #[derive(Debug)]
 pub struct LineWriterShim<'a, W: ?Sized + Write> {
@@ -18,7 +18,7 @@ impl<'a, W: ?Sized + Write> LineWriterShim<'a, W> {
     fn buffered(&self) -> &[u8] {
         self.buffer.buffer()
     }
-    fn flush_if_completed_line(&mut self) -> crate::Result<()> {
+    fn flush_if_completed_line(&mut self) -> io::Result<()> {
         match self.buffered().last().copied() {
             Some(b'\n') => self.buffer.flush_buf(),
             _ => Ok(()),
@@ -26,7 +26,7 @@ impl<'a, W: ?Sized + Write> LineWriterShim<'a, W> {
     }
 }
 impl<'a, W: ?Sized + Write> Write for LineWriterShim<'a, W> {
-    fn write(&mut self, buf: &[u8]) -> crate::Result<usize> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         let newline_idx = match memchr::memrchr(b'\n', buf) {
             None => {
                 self.flush_if_completed_line()?;
@@ -55,13 +55,13 @@ impl<'a, W: ?Sized + Write> Write for LineWriterShim<'a, W> {
         let buffered = self.buffer.write_to_buf(tail);
         Ok(flushed + buffered)
     }
-    fn flush(&mut self) -> crate::Result<()> {
+    fn flush(&mut self) -> io::Result<()> {
         self.buffer.flush()
     }
     fn is_write_vectored(&self) -> bool {
         self.inner().is_write_vectored()
     }
-    fn write_all(&mut self, buf: &[u8]) -> crate::Result<()> {
+    fn write_all(&mut self, buf: &[u8]) -> io::Result<()> {
         match memchr::memrchr(b'\n', buf) {
             None => {
                 self.flush_if_completed_line()?;

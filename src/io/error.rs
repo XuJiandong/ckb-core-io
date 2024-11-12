@@ -3,7 +3,7 @@ use core::result;
 
 pub mod core_error {
     #[cfg(feature = "rust_before_181")]
-    pub use crate::cherry_picking::error::Error;
+    pub use crate::io::cherry_picking::error::Error;
     #[cfg(not(feature = "rust_before_181"))]
     pub use core::error::Error;
 }
@@ -41,9 +41,9 @@ impl fmt::Debug for Error {
 #[macro_export]
 macro_rules! const_io_error {
     ($kind:expr, $message:expr $(,)?) => {
-        $crate::error::Error::from_static_message({
-            const MESSAGE_DATA: $crate::error::SimpleMessage =
-                $crate::error::SimpleMessage::new($kind, $message);
+        $crate::io::error::Error::from_static_message({
+            const MESSAGE_DATA: $crate::io::error::SimpleMessage =
+                $crate::io::error::SimpleMessage::new($kind, $message);
             &MESSAGE_DATA
         })
     };

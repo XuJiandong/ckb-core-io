@@ -1,7 +1,8 @@
 #[cfg(test)]
 mod tests;
 
-use crate::{
+use crate::io;
+use crate::io::{
     error::ErrorKind, BorrowedCursor, BufRead, Error, Read, Seek, SeekFrom, SizeHint, Write,
 };
 use alloc::{fmt, string::String, vec::Vec};
@@ -14,30 +15,30 @@ pub const fn empty() -> Empty {
 }
 impl Read for Empty {
     #[inline]
-    fn read(&mut self, _buf: &mut [u8]) -> crate::Result<usize> {
+    fn read(&mut self, _buf: &mut [u8]) -> io::Result<usize> {
         Ok(0)
     }
     #[inline]
-    fn read_buf(&mut self, _cursor: BorrowedCursor<'_>) -> crate::Result<()> {
+    fn read_buf(&mut self, _cursor: BorrowedCursor<'_>) -> io::Result<()> {
         Ok(())
     }
 }
 impl BufRead for Empty {
     #[inline]
-    fn fill_buf(&mut self) -> crate::Result<&[u8]> {
+    fn fill_buf(&mut self) -> io::Result<&[u8]> {
         Ok(&[])
     }
     #[inline]
     fn consume(&mut self, _n: usize) {}
 }
 impl Seek for Empty {
-    fn seek(&mut self, _pos: SeekFrom) -> crate::Result<u64> {
+    fn seek(&mut self, _pos: SeekFrom) -> io::Result<u64> {
         Ok(0)
     }
-    fn stream_len(&mut self) -> crate::Result<u64> {
+    fn stream_len(&mut self) -> io::Result<u64> {
         Ok(0)
     }
-    fn stream_position(&mut self) -> crate::Result<u64> {
+    fn stream_position(&mut self) -> io::Result<u64> {
         Ok(0)
     }
 }
@@ -53,7 +54,7 @@ impl SizeHint for Empty {
 }
 impl Write for Empty {
     #[inline]
-    fn write(&mut self, buf: &[u8]) -> crate::Result<usize> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         Ok(buf.len())
     }
     #[inline]
@@ -61,13 +62,13 @@ impl Write for Empty {
         true
     }
     #[inline]
-    fn flush(&mut self) -> crate::Result<()> {
+    fn flush(&mut self) -> io::Result<()> {
         Ok(())
     }
 }
 impl Write for &Empty {
     #[inline]
-    fn write(&mut self, buf: &[u8]) -> crate::Result<usize> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         Ok(buf.len())
     }
     #[inline]
@@ -75,7 +76,7 @@ impl Write for &Empty {
         true
     }
     #[inline]
-    fn flush(&mut self) -> crate::Result<()> {
+    fn flush(&mut self) -> io::Result<()> {
         Ok(())
     }
 }
@@ -88,13 +89,13 @@ pub const fn repeat(byte: u8) -> Repeat {
 }
 impl Read for Repeat {
     #[inline]
-    fn read(&mut self, buf: &mut [u8]) -> crate::Result<usize> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         for slot in &mut *buf {
             *slot = self.byte;
         }
         Ok(buf.len())
     }
-    fn read_buf(&mut self, mut buf: BorrowedCursor<'_>) -> crate::Result<()> {
+    fn read_buf(&mut self, mut buf: BorrowedCursor<'_>) -> io::Result<()> {
         for slot in unsafe { buf.as_mut() } {
             slot.write(self.byte);
         }
@@ -104,10 +105,10 @@ impl Read for Repeat {
         }
         Ok(())
     }
-    fn read_to_end(&mut self, _: &mut Vec<u8>) -> crate::Result<usize> {
+    fn read_to_end(&mut self, _: &mut Vec<u8>) -> io::Result<usize> {
         Err(Error::from(ErrorKind::OutOfMemory))
     }
-    fn read_to_string(&mut self, _: &mut String) -> crate::Result<usize> {
+    fn read_to_string(&mut self, _: &mut String) -> io::Result<usize> {
         Err(Error::from(ErrorKind::OutOfMemory))
     }
 }
@@ -135,7 +136,7 @@ pub const fn sink() -> Sink {
 }
 impl Write for Sink {
     #[inline]
-    fn write(&mut self, buf: &[u8]) -> crate::Result<usize> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         Ok(buf.len())
     }
     #[inline]
@@ -143,13 +144,13 @@ impl Write for Sink {
         true
     }
     #[inline]
-    fn flush(&mut self) -> crate::Result<()> {
+    fn flush(&mut self) -> io::Result<()> {
         Ok(())
     }
 }
 impl Write for &Sink {
     #[inline]
-    fn write(&mut self, buf: &[u8]) -> crate::Result<usize> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         Ok(buf.len())
     }
     #[inline]
@@ -157,7 +158,7 @@ impl Write for &Sink {
         true
     }
     #[inline]
-    fn flush(&mut self) -> crate::Result<()> {
+    fn flush(&mut self) -> io::Result<()> {
         Ok(())
     }
 }

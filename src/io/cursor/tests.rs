@@ -1,5 +1,5 @@
-use crate::prelude::*;
-use crate::{Cursor, SeekFrom};
+use crate::io::prelude::*;
+use crate::io::{Cursor, SeekFrom};
 use alloc::vec;
 use alloc::vec::Vec;
 
