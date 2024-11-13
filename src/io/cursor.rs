@@ -78,6 +78,7 @@ pub struct Cursor<T> {
     inner: T,
     pos: u64,
 }
+
 impl<T> Cursor<T> {
     /// Creates a new cursor wrapping the provided underlying in-memory buffer.
     ///
@@ -97,6 +98,7 @@ impl<T> Cursor<T> {
     pub const fn new(inner: T) -> Cursor<T> {
         Cursor { pos: 0, inner }
     }
+
     /// Consumes this cursor, returning the underlying value.
     ///
     /// # Examples
@@ -113,6 +115,7 @@ impl<T> Cursor<T> {
     pub fn into_inner(self) -> T {
         self.inner
     }
+
     /// Gets a reference to the underlying value in this cursor.
     ///
     /// # Examples
@@ -149,6 +152,7 @@ impl<T> Cursor<T> {
     pub fn get_mut(&mut self) -> &mut T {
         &mut self.inner
     }
+
     /// Returns the current position of this cursor.
     ///
     /// # Examples
@@ -171,6 +175,7 @@ impl<T> Cursor<T> {
     pub const fn position(&self) -> u64 {
         self.pos
     }
+
     /// Sets the position of this cursor.
     ///
     /// # Examples
@@ -192,6 +197,7 @@ impl<T> Cursor<T> {
         self.pos = pos;
     }
 }
+
 impl<T> Cursor<T>
 where
     T: AsRef<[u8]>,
@@ -221,6 +227,7 @@ where
         let len = self.pos.min(self.inner.as_ref().len() as u64);
         &self.inner.as_ref()[(len as usize)..]
     }
+
     /// Returns `true` if the remaining slice is empty.
     ///
     /// # Examples
@@ -285,9 +292,11 @@ where
             )),
         }
     }
+
     fn stream_len(&mut self) -> io::Result<u64> {
         Ok(self.inner.as_ref().len() as u64)
     }
+
     fn stream_position(&mut self) -> io::Result<u64> {
         Ok(self.pos)
     }
@@ -301,35 +310,47 @@ where
         self.pos += n as u64;
         Ok(n)
     }
+
     fn read_buf(&mut self, mut cursor: BorrowedCursor<'_>) -> io::Result<()> {
         let prev_written = cursor.written();
+
         Read::read_buf(&mut self.remaining_slice(), cursor.reborrow())?;
+
         self.pos += (cursor.written() - prev_written) as u64;
+
         Ok(())
     }
     fn read_exact(&mut self, buf: &mut [u8]) -> io::Result<()> {
         let result = Read::read_exact(&mut self.remaining_slice(), buf);
+
         match result {
             Ok(_) => self.pos += buf.len() as u64,
             // The only possible error condition is EOF, so place the cursor at "EOF"
             Err(_) => self.pos = self.inner.as_ref().len() as u64,
         }
+
         result
     }
+
     fn read_buf_exact(&mut self, mut cursor: BorrowedCursor<'_>) -> io::Result<()> {
         let prev_written = cursor.written();
+
         let result = Read::read_buf_exact(&mut self.remaining_slice(), cursor.reborrow());
         self.pos += (cursor.written() - prev_written) as u64;
+
         result
     }
+
     fn read_to_end(&mut self, buf: &mut Vec<u8>) -> io::Result<usize> {
         let content = self.remaining_slice();
         let len = content.len();
         buf.try_reserve(len)?;
         buf.extend_from_slice(content);
         self.pos += len as u64;
+
         Ok(len)
     }
+
     fn read_to_string(&mut self, buf: &mut String) -> io::Result<usize> {
         let content =
             alloc::str::from_utf8(self.remaining_slice()).map_err(|_| io::Error::INVALID_UTF8)?;
@@ -415,12 +436,18 @@ unsafe fn vec_write_unchecked(pos: usize, vec: &mut Vec<u8>, buf: &[u8]) -> usiz
 fn vec_write(pos_mut: &mut u64, vec: &mut Vec<u8>, buf: &[u8]) -> io::Result<usize> {
     let buf_len = buf.len();
     let mut pos = reserve_and_pad(pos_mut, vec, buf_len)?;
+
+    // Write the buf then progress the vec forward if necessary
+    // Safety: we have ensured that the capacity is available
+    // and that all bytes get written up to pos
     unsafe {
         pos = vec_write_unchecked(pos, vec, buf);
         if pos > vec.len() {
             vec.set_len(pos);
         }
     };
+
+    // Bump us forward
     *pos_mut += buf_len as u64;
     Ok(buf_len)
 }
@@ -460,6 +487,7 @@ impl Write for Cursor<Vec<u8>> {
     fn is_write_vectored(&self) -> bool {
         true
     }
+
     #[inline]
     fn flush(&mut self) -> io::Result<()> {
         Ok(())
@@ -474,6 +502,7 @@ impl Write for Cursor<Box<[u8]>> {
     fn is_write_vectored(&self) -> bool {
         true
     }
+
     #[inline]
     fn flush(&mut self) -> io::Result<()> {
         Ok(())
@@ -488,6 +517,7 @@ impl<const N: usize> Write for Cursor<[u8; N]> {
     fn is_write_vectored(&self) -> bool {
         true
     }
+
     #[inline]
     fn flush(&mut self) -> io::Result<()> {
         Ok(())

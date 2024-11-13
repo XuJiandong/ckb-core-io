@@ -1,13 +1,13 @@
 [package]
-name = "ckb-core-io"
+name = "ckb-rust-std"
 version = "1.0.0"
 edition = "2021"
 authors = ["Lyndon <lynndon@gmail.com>"]
 license = "MIT"
-repository = "https://github.com/XuJiandong/ckb-core-io"
-keywords = ["no_std", "io", "core"]
+repository = "https://github.com/XuJiandong/ckb-rust-std"
+keywords = ["no_std", "io", "ckb"]
 readme = "README.md"
-description = "A `no_std` compatible I/O module, ported from `std::io`."
+description = "A collection of `no_std` compatible modules ported from Rust's standard library, with an initial focus on the `io` module."
 
 [dependencies]
 

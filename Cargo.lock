@@ -3,5 +3,5 @@
 version = 3
 
 [[package]]
-name = "ckb-core-io"
+name = "ckb-rust-std"
 version = "1.0.0"

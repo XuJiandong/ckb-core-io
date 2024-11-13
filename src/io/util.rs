@@ -56,6 +56,7 @@ impl Read for Empty {
     fn read(&mut self, _buf: &mut [u8]) -> io::Result<usize> {
         Ok(0)
     }
+
     #[inline]
     fn read_buf(&mut self, _cursor: BorrowedCursor<'_>) -> io::Result<()> {
         Ok(())
@@ -73,13 +74,16 @@ impl Seek for Empty {
     fn seek(&mut self, _pos: SeekFrom) -> io::Result<u64> {
         Ok(0)
     }
+
     fn stream_len(&mut self) -> io::Result<u64> {
         Ok(0)
     }
+
     fn stream_position(&mut self) -> io::Result<u64> {
         Ok(0)
     }
 }
+
 impl SizeHint for Empty {
     #[inline]
     fn lower_bound(&self) -> usize {
@@ -99,6 +103,7 @@ impl Write for Empty {
     fn is_write_vectored(&self) -> bool {
         true
     }
+
     #[inline]
     fn flush(&mut self) -> io::Result<()> {
         Ok(())
@@ -113,6 +118,7 @@ impl Write for &Empty {
     fn is_write_vectored(&self) -> bool {
         true
     }
+
     #[inline]
     fn flush(&mut self) -> io::Result<()> {
         Ok(())
@@ -153,17 +159,20 @@ impl Read for Repeat {
         }
         Ok(buf.len())
     }
+
     fn read_buf(&mut self, mut buf: BorrowedCursor<'_>) -> io::Result<()> {
         // SAFETY: No uninit bytes are being written
         for slot in unsafe { buf.as_mut() } {
             slot.write(self.byte);
         }
+
         let remaining = buf.capacity();
 
         // SAFETY: the entire unfilled portion of buf has been initialized
         unsafe {
             buf.advance_unchecked(remaining);
         }
+
         Ok(())
     }
 
@@ -177,11 +186,13 @@ impl Read for Repeat {
         Err(io::Error::from(io::ErrorKind::OutOfMemory))
     }
 }
+
 impl SizeHint for Repeat {
     #[inline]
     fn lower_bound(&self) -> usize {
         usize::MAX
     }
+
     #[inline]
     fn upper_bound(&self) -> Option<usize> {
         None
@@ -227,10 +238,12 @@ impl Write for Sink {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         Ok(buf.len())
     }
+
     #[inline]
     fn is_write_vectored(&self) -> bool {
         true
     }
+
     #[inline]
     fn flush(&mut self) -> io::Result<()> {
         Ok(())
@@ -245,6 +258,7 @@ impl Write for &Sink {
     fn is_write_vectored(&self) -> bool {
         true
     }
+
     #[inline]
     fn flush(&mut self) -> io::Result<()> {
         Ok(())

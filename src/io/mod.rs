@@ -403,8 +403,10 @@ pub(crate) fn default_read_to_end<R: Read + ?Sized>(
     let mut initialized = 0; // Extra initialized bytes from previous loop iteration
 
     const PROBE_SIZE: usize = 32;
+
     fn small_probe_read<R: Read + ?Sized>(r: &mut R, buf: &mut Vec<u8>) -> Result<usize> {
         let mut probe = [0u8; PROBE_SIZE];
+
         loop {
             match r.read(&mut probe) {
                 Ok(n) => {
@@ -422,10 +424,12 @@ pub(crate) fn default_read_to_end<R: Read + ?Sized>(
     // avoid inflating empty/small vecs before we have determined that there's anything to read
     if (size_hint.is_none() || size_hint == Some(0)) && buf.capacity() - buf.len() < PROBE_SIZE {
         let read = small_probe_read(r, buf)?;
+
         if read == 0 {
             return Ok(0);
         }
     }
+
     loop {
         if buf.len() == buf.capacity() && buf.capacity() == start_cap {
             // The buffer might be an exact fit. Let's read into a probe buffer
@@ -433,10 +437,12 @@ pub(crate) fn default_read_to_end<R: Read + ?Sized>(
             // unnecessary doubling of the capacity. But if not, append the
             // probe buffer to the primary buffer and let its capacity grow.
             let read = small_probe_read(r, buf)?;
+
             if read == 0 {
                 return Ok(buf.len() - start_len);
             }
         }
+
         if buf.len() == buf.capacity() {
             // buf is full, need more space
             buf.try_reserve(PROBE_SIZE)?;
@@ -450,6 +456,7 @@ pub(crate) fn default_read_to_end<R: Read + ?Sized>(
         unsafe {
             read_buf.set_init(initialized);
         }
+
         let mut cursor = read_buf.unfilled();
         loop {
             match r.read_buf(cursor.reborrow()) {
@@ -458,9 +465,11 @@ pub(crate) fn default_read_to_end<R: Read + ?Sized>(
                 Err(e) => return Err(e),
             }
         }
+
         let unfilled_but_initialized = cursor.init_ref().len();
         let bytes_read = cursor.written();
         let was_fully_initialized = read_buf.init_len() == buf_len;
+
         if bytes_read == 0 {
             return Ok(buf.len() - start_len);
         }
@@ -491,6 +500,7 @@ pub(crate) fn default_read_to_end<R: Read + ?Sized>(
         }
     }
 }
+
 pub(crate) fn default_read_to_string<R: Read + ?Sized>(
     r: &mut R,
     buf: &mut String,
@@ -534,6 +544,7 @@ where
     cursor.advance(n);
     Ok(())
 }
+
 pub(crate) fn default_read_buf_exact<R: Read + ?Sized>(
     this: &mut R,
     mut cursor: BorrowedCursor<'_>,
@@ -545,10 +556,12 @@ pub(crate) fn default_read_buf_exact<R: Read + ?Sized>(
             Err(e) if e.is_interrupted() => continue,
             Err(e) => return Err(e),
         }
+
         if cursor.written() == prev_written {
             return Err(Error::READ_EXACT_EOF);
         }
     }
+
     Ok(())
 }
 
@@ -1337,6 +1350,7 @@ pub trait Write {
             inner: &'a mut T,
             error: Result<()>,
         }
+
         impl<T: Write + ?Sized> fmt::Write for Adapter<'_, T> {
             fn write_str(&mut self, s: &str) -> fmt::Result {
                 match self.inner.write_all(s.as_bytes()) {
@@ -1369,6 +1383,7 @@ pub trait Write {
             }
         }
     }
+
     /// Creates a "by reference" adapter for this instance of `Write`.
     ///
     /// The returned adapter also implements `Write` and will simply borrow this
@@ -1397,6 +1412,7 @@ pub trait Write {
         self
     }
 }
+
 /// The `Seek` trait provides a cursor which can be moved within a stream of
 /// bytes.
 ///
@@ -1516,6 +1532,7 @@ pub trait Seek {
         if old_pos != len {
             self.seek(SeekFrom::Start(old_pos))?;
         }
+
         Ok(len)
     }
 
@@ -1597,6 +1614,7 @@ pub enum SeekFrom {
     /// seek before byte 0.
     Current(i64),
 }
+
 fn read_until<R: BufRead + ?Sized>(r: &mut R, delim: u8, buf: &mut Vec<u8>) -> Result<usize> {
     let mut read = 0;
     loop {
@@ -1624,6 +1642,7 @@ fn read_until<R: BufRead + ?Sized>(r: &mut R, delim: u8, buf: &mut Vec<u8>) -> R
         }
     }
 }
+
 fn skip_until<R: BufRead + ?Sized>(r: &mut R, delim: u8) -> Result<usize> {
     let mut read = 0;
     loop {
@@ -2064,6 +2083,7 @@ pub struct Chain<T, U> {
     second: U,
     done_first: bool,
 }
+
 impl<T, U> Chain<T, U> {
     /// Consumes the `Chain`, returning the wrapped readers.
     ///
@@ -2162,9 +2182,11 @@ impl<T: Read, U: Read> Read for Chain<T, U> {
         if buf.capacity() == 0 {
             return Ok(());
         }
+
         if !self.done_first {
             let old_len = buf.written();
             self.first.read_buf(buf.reborrow())?;
+
             if buf.written() != old_len {
                 return Ok(());
             } else {
@@ -2184,6 +2206,7 @@ impl<T: BufRead, U: BufRead> BufRead for Chain<T, U> {
         }
         self.second.fill_buf()
     }
+
     fn consume(&mut self, amt: usize) {
         if !self.done_first {
             self.first.consume(amt)
@@ -2197,6 +2220,7 @@ impl<T: BufRead, U: BufRead> BufRead for Chain<T, U> {
         if !self.done_first {
             let n = self.first.read_until(byte, buf)?;
             read += n;
+
             match buf.last() {
                 Some(b) if *b == byte && n != 0 => return Ok(read),
                 _ => self.done_first = true,
@@ -2214,6 +2238,7 @@ impl<T: SizeHint, U: SizeHint> SizeHint for Chain<T, U> {
     fn lower_bound(&self) -> usize {
         SizeHint::lower_bound(&self.first) + SizeHint::lower_bound(&self.second)
     }
+
     #[inline]
     fn upper_bound(&self) -> Option<usize> {
         match (
@@ -2237,6 +2262,7 @@ pub struct Take<T> {
     inner: T,
     limit: u64,
 }
+
 impl<T> Take<T> {
     /// Returns the number of bytes that can be read before this instance will
     /// return EOF.
@@ -2376,6 +2402,7 @@ impl<T: Read> Read for Take<T> {
         if self.limit == 0 {
             return Ok(0);
         }
+
         let max = cmp::min(buf.len() as u64, self.limit) as usize;
         let n = self.inner.read(&mut buf[..max])?;
         assert!(n as u64 <= self.limit, "number of read bytes exceeds limit");
@@ -2404,8 +2431,10 @@ impl<T: Read> Read for Take<T> {
             unsafe {
                 sliced_buf.set_init(extra_init);
             }
+
             let mut cursor = sliced_buf.unfilled();
             self.inner.read_buf(cursor.reborrow())?;
+
             let new_init = cursor.init_ref().len();
             let filled = sliced_buf.len();
 
@@ -2452,6 +2481,7 @@ impl<T: SizeHint> SizeHint for Take<T> {
     fn lower_bound(&self) -> usize {
         cmp::min(SizeHint::lower_bound(&self.inner) as u64, self.limit) as usize
     }
+
     #[inline]
     fn upper_bound(&self) -> Option<usize> {
         match SizeHint::upper_bound(&self.inner) {
@@ -2503,6 +2533,9 @@ fn inlined_slow_read_byte<R: Read>(reader: &mut R) -> Option<Result<u8>> {
         };
     }
 }
+
+// Used by `BufReader::spec_read_byte`, for which the `inline(ever)` is
+// important.
 #[inline(never)]
 fn uninlined_slow_read_byte<R: Read>(reader: &mut R) -> Option<Result<u8>> {
     inlined_slow_read_byte(reader)
@@ -2510,7 +2543,9 @@ fn uninlined_slow_read_byte<R: Read>(reader: &mut R) -> Option<Result<u8>> {
 #[allow(unused)]
 pub(crate) trait SizeHint {
     fn lower_bound(&self) -> usize;
+
     fn upper_bound(&self) -> Option<usize>;
+
     fn size_hint(&self) -> (usize, Option<usize>) {
         (self.lower_bound(), self.upper_bound())
     }
@@ -2521,6 +2556,7 @@ impl<T: SizeHint> SizeHint for &mut T {
     fn lower_bound(&self) -> usize {
         SizeHint::lower_bound(*self)
     }
+
     #[inline]
     fn upper_bound(&self) -> Option<usize> {
         SizeHint::upper_bound(*self)
@@ -2531,16 +2567,19 @@ impl<T: SizeHint> SizeHint for Box<T> {
     fn lower_bound(&self) -> usize {
         SizeHint::lower_bound(&**self)
     }
+
     #[inline]
     fn upper_bound(&self) -> Option<usize> {
         SizeHint::upper_bound(&**self)
     }
 }
+
 impl SizeHint for &[u8] {
     #[inline]
     fn lower_bound(&self) -> usize {
         self.len()
     }
+
     #[inline]
     fn upper_bound(&self) -> Option<usize> {
         Some(self.len())
@@ -2561,6 +2600,7 @@ pub struct Split<B> {
 }
 impl<B: BufRead> Iterator for Split<B> {
     type Item = Result<Vec<u8>>;
+
     fn next(&mut self) -> Option<Result<Vec<u8>>> {
         let mut buf = Vec::new();
         match self.buf.read_until(self.delim, &mut buf) {
@@ -2588,6 +2628,7 @@ pub struct Lines<B> {
 }
 impl<B: BufRead> Iterator for Lines<B> {
     type Item = Result<String>;
+
     fn next(&mut self) -> Option<Result<String>> {
         let mut buf = String::new();
         match self.buf.read_line(&mut buf) {

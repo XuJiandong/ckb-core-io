@@ -27,7 +27,7 @@ For Rust versions prior to 1.81.0, `core::error::Error` is not available in `no_
 - For Rust < 1.81.0: Add the `rust_before_181` feature flag in your `Cargo.toml`:
   ```toml
   [dependencies]
-  ckb-core-io = { version = "...", features = ["rust_before_181"] }
+  ckb-rust-std = { version = "...", features = ["rust_before_181"] }
   ```
 We strongly recommend using Rust 1.81 or later as it provides better error handling features.
 
@@ -45,7 +45,7 @@ counterparts.
 ### How to adopt official `core::io` if it is implemented?
 When an official `core::io` implementation becomes available, migration should be straightforward:
 
-1. Due to identical behavior and semantics, you can simply replace imports from `ckb-core-io` with `core::io`
+1. Due to identical behavior and semantics, you can simply replace imports from `ckb-rust-std::io` with `core::io`
 2. Update your `Cargo.toml` dependencies to remove this crate
 3. No behavioral changes will be required in your code
 
@@ -53,21 +53,18 @@ For example:
 
 ```rust,ignore
 // Before
-use ckb_core_io::{Read, Write};
+use ckb_rust_std::io::{Read, Write};
 
 // After
 use core::io::{Read, Write};
 ```
 
 ### What features are removed compared to std::io?
-Due to the lack of
-[specialization](https://github.com/rust-lang/rust/issues/31844) in stable Rust,
-the following optimizations and features have been removed:
-
-1. Optimized implementations of `copy()` for specific types
-2. Optimized `SizeHint` implementations for certain iterators
-
-The `read_vectored()` and related vectored I/O operations is removed due to
-limited use cases in no_std environments.
-
-The `repr` of error code is removed.
+- Optimized implementations of `copy()` for specific types, due to the lack of
+  [specialization](https://github.com/rust-lang/rust/issues/31844) in stable Rust
+- Optimized `SizeHint` implementations for certain iterators, due to the lack of
+  [specialization](https://github.com/rust-lang/rust/issues/31844) in stable Rust
+- Vectored I/O operations (`read_vectored()` and related functions) due to limited
+  use cases in `no_std` environments
+- Error code representations (`repr`)
+- The `stdio` module

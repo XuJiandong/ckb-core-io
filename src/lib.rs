@@ -1,3 +1,4 @@
+#![doc = include_str!("../README.md")]
 #![no_std]
 #![allow(clippy::doc_lazy_continuation)]
 

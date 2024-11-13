@@ -12,6 +12,7 @@ impl<R: Read + ?Sized> Read for &mut R {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         (**self).read(buf)
     }
+
     #[inline]
     fn read_buf(&mut self, cursor: BorrowedCursor<'_>) -> io::Result<()> {
         (**self).read_buf(cursor)
@@ -20,10 +21,12 @@ impl<R: Read + ?Sized> Read for &mut R {
     fn read_to_end(&mut self, buf: &mut Vec<u8>) -> io::Result<usize> {
         (**self).read_to_end(buf)
     }
+
     #[inline]
     fn read_to_string(&mut self, buf: &mut String) -> io::Result<usize> {
         (**self).read_to_string(buf)
     }
+
     #[inline]
     fn read_exact(&mut self, buf: &mut [u8]) -> io::Result<()> {
         (**self).read_exact(buf)
@@ -42,10 +45,12 @@ impl<W: Write + ?Sized> Write for &mut W {
     fn flush(&mut self) -> io::Result<()> {
         (**self).flush()
     }
+
     #[inline]
     fn write_all(&mut self, buf: &[u8]) -> io::Result<()> {
         (**self).write_all(buf)
     }
+
     #[inline]
     fn write_fmt(&mut self, fmt: fmt::Arguments<'_>) -> io::Result<()> {
         (**self).write_fmt(fmt)
@@ -66,14 +71,17 @@ impl<B: BufRead + ?Sized> BufRead for &mut B {
     fn fill_buf(&mut self) -> io::Result<&[u8]> {
         (**self).fill_buf()
     }
+
     #[inline]
     fn consume(&mut self, amt: usize) {
         (**self).consume(amt)
     }
+
     #[inline]
     fn read_until(&mut self, byte: u8, buf: &mut Vec<u8>) -> io::Result<usize> {
         (**self).read_until(byte, buf)
     }
+
     #[inline]
     fn read_line(&mut self, buf: &mut String) -> io::Result<usize> {
         (**self).read_line(buf)
@@ -84,18 +92,22 @@ impl<R: Read + ?Sized> Read for Box<R> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         (**self).read(buf)
     }
+
     #[inline]
     fn read_buf(&mut self, cursor: BorrowedCursor<'_>) -> io::Result<()> {
         (**self).read_buf(cursor)
     }
+
     #[inline]
     fn read_to_end(&mut self, buf: &mut Vec<u8>) -> io::Result<usize> {
         (**self).read_to_end(buf)
     }
+
     #[inline]
     fn read_to_string(&mut self, buf: &mut String) -> io::Result<usize> {
         (**self).read_to_string(buf)
     }
+
     #[inline]
     fn read_exact(&mut self, buf: &mut [u8]) -> io::Result<()> {
         (**self).read_exact(buf)
@@ -118,6 +130,7 @@ impl<W: Write + ?Sized> Write for Box<W> {
     fn write_all(&mut self, buf: &[u8]) -> io::Result<()> {
         (**self).write_all(buf)
     }
+
     #[inline]
     fn write_fmt(&mut self, fmt: fmt::Arguments<'_>) -> io::Result<()> {
         (**self).write_fmt(fmt)
@@ -128,6 +141,7 @@ impl<S: Seek + ?Sized> Seek for Box<S> {
     fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
         (**self).seek(pos)
     }
+
     #[inline]
     fn stream_position(&mut self) -> io::Result<u64> {
         (**self).stream_position()
@@ -138,19 +152,23 @@ impl<B: BufRead + ?Sized> BufRead for Box<B> {
     fn fill_buf(&mut self) -> io::Result<&[u8]> {
         (**self).fill_buf()
     }
+
     #[inline]
     fn consume(&mut self, amt: usize) {
         (**self).consume(amt)
     }
+
     #[inline]
     fn read_until(&mut self, byte: u8, buf: &mut Vec<u8>) -> io::Result<usize> {
         (**self).read_until(byte, buf)
     }
+
     #[inline]
     fn read_line(&mut self, buf: &mut String) -> io::Result<usize> {
         (**self).read_line(buf)
     }
 }
+
 // =============================================================================
 // In-memory buffer implementations
 
@@ -172,14 +190,18 @@ impl Read for &[u8] {
         } else {
             buf[..amt].copy_from_slice(a);
         }
+
         *self = b;
         Ok(amt)
     }
+
     #[inline]
     fn read_buf(&mut self, mut cursor: BorrowedCursor<'_>) -> io::Result<()> {
         let amt = cmp::min(cursor.capacity(), self.len());
         let (a, b) = self.split_at(amt);
+
         cursor.append(a);
+
         *self = b;
         Ok(())
     }
@@ -201,9 +223,11 @@ impl Read for &[u8] {
         } else {
             buf.copy_from_slice(a);
         }
+
         *self = b;
         Ok(())
     }
+
     #[inline]
     fn read_buf_exact(&mut self, mut cursor: BorrowedCursor<'_>) -> io::Result<()> {
         if cursor.capacity() > self.len() {
@@ -213,10 +237,13 @@ impl Read for &[u8] {
             return Err(io::Error::READ_EXACT_EOF);
         }
         let (a, b) = self.split_at(cursor.capacity());
+
         cursor.append(a);
+
         *self = b;
         Ok(())
     }
+
     #[inline]
     fn read_to_end(&mut self, buf: &mut Vec<u8>) -> io::Result<usize> {
         let len = self.len();
@@ -225,6 +252,7 @@ impl Read for &[u8] {
         *self = &self[len..];
         Ok(len)
     }
+
     #[inline]
     fn read_to_string(&mut self, buf: &mut String) -> io::Result<usize> {
         let content = str::from_utf8(self).map_err(|_| io::Error::INVALID_UTF8)?;
@@ -240,6 +268,7 @@ impl BufRead for &[u8] {
     fn fill_buf(&mut self) -> io::Result<&[u8]> {
         Ok(*self)
     }
+
     #[inline]
     fn consume(&mut self, amt: usize) {
         *self = &self[amt..];
@@ -281,6 +310,7 @@ impl Write for &mut [u8] {
         Ok(())
     }
 }
+
 /// Write is implemented for `Vec<u8>` by appending to the vector.
 /// The vector will grow as needed.
 impl Write for Vec<u8> {
@@ -293,11 +323,13 @@ impl Write for Vec<u8> {
     fn is_write_vectored(&self) -> bool {
         true
     }
+
     #[inline]
     fn write_all(&mut self, buf: &[u8]) -> io::Result<()> {
         self.extend_from_slice(buf);
         Ok(())
     }
+
     #[inline]
     fn flush(&mut self) -> io::Result<()> {
         Ok(())
@@ -315,6 +347,7 @@ impl Read for VecDeque<u8> {
         self.drain(..n);
         Ok(n)
     }
+
     #[inline]
     fn read_buf(&mut self, cursor: BorrowedCursor<'_>) -> io::Result<()> {
         let (ref mut front, _) = self.as_slices();
@@ -323,17 +356,20 @@ impl Read for VecDeque<u8> {
         self.drain(..n);
         Ok(())
     }
+
     #[inline]
     fn read_to_end(&mut self, buf: &mut Vec<u8>) -> io::Result<usize> {
         // The total len is known upfront so we can reserve it in a single call.
         let len = self.len();
         buf.try_reserve(len)?;
+
         let (front, back) = self.as_slices();
         buf.extend_from_slice(front);
         buf.extend_from_slice(back);
         self.clear();
         Ok(len)
     }
+
     #[inline]
     fn read_to_string(&mut self, buf: &mut String) -> io::Result<usize> {
         // SAFETY: We only append to the buffer
@@ -355,6 +391,7 @@ impl BufRead for VecDeque<u8> {
         self.drain(..amt);
     }
 }
+
 /// Write is implemented for `VecDeque<u8>` by appending to the `VecDeque`, growing it as needed.
 impl Write for VecDeque<u8> {
     #[inline]
@@ -371,6 +408,7 @@ impl Write for VecDeque<u8> {
         self.extend(buf);
         Ok(())
     }
+
     #[inline]
     fn flush(&mut self) -> io::Result<()> {
         Ok(())
@@ -382,6 +420,7 @@ impl<'a> io::Write for io::BorrowedCursor<'a> {
         self.append(&buf[..amt]);
         Ok(amt)
     }
+
     #[inline]
     fn flush(&mut self) -> io::Result<()> {
         Ok(())
