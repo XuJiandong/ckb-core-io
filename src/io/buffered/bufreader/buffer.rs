@@ -29,6 +29,7 @@ pub struct Buffer {
     // omitting this is a huge perf regression for `Read` impls that do not.
     initialized: usize,
 }
+
 impl Buffer {
     #[inline]
     pub fn with_capacity(capacity: usize) -> Self {
@@ -55,10 +56,12 @@ impl Buffer {
     pub fn capacity(&self) -> usize {
         self.buf.len()
     }
+
     #[inline]
     pub fn filled(&self) -> usize {
         self.filled
     }
+
     #[inline]
     pub fn pos(&self) -> usize {
         self.pos
@@ -69,11 +72,13 @@ impl Buffer {
     pub fn initialized(&self) -> usize {
         self.initialized
     }
+
     #[inline]
     pub fn discard_buffer(&mut self) {
         self.pos = 0;
         self.filled = 0;
     }
+
     #[inline]
     pub fn consume(&mut self, amt: usize) {
         self.pos = cmp::min(self.pos + amt, self.filled);
@@ -95,10 +100,12 @@ impl Buffer {
             false
         }
     }
+
     #[inline]
     pub fn unconsume(&mut self, amt: usize) {
         self.pos = self.pos.saturating_sub(amt);
     }
+
     #[inline]
     pub fn fill_buf(&mut self, mut reader: impl Read) -> io::Result<&[u8]> {
         // If we've reached the end of our internal buffer then we need to fetch
@@ -107,12 +114,15 @@ impl Buffer {
         // to tell the compiler that the pos..cap slice is always valid.
         if self.pos >= self.filled {
             debug_assert!(self.pos == self.filled);
+
             let mut buf = BorrowedBuf::from(&mut *self.buf);
             // SAFETY: `self.filled` bytes will always have been initialized.
             unsafe {
                 buf.set_init(self.initialized);
             }
+
             reader.read_buf(buf.unfilled())?;
+
             self.pos = 0;
             self.filled = buf.len();
             self.initialized = buf.init_len();

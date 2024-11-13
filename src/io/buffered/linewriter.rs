@@ -65,6 +65,7 @@ use alloc::fmt;
 pub struct LineWriter<W: ?Sized + Write> {
     inner: BufWriter<W>,
 }
+
 impl<W: Write> LineWriter<W> {
     /// Creates a new `LineWriter`.
     ///
@@ -159,6 +160,7 @@ impl<W: Write> LineWriter<W> {
             .map_err(|err| err.new_wrapped(|inner| LineWriter { inner }))
     }
 }
+
 impl<W: ?Sized + Write> LineWriter<W> {
     /// Gets a reference to the underlying writer.
     ///
@@ -190,6 +192,7 @@ impl<W: ?Sized + Write> Write for LineWriter<W> {
     fn is_write_vectored(&self) -> bool {
         self.inner.is_write_vectored()
     }
+
     fn write_all(&mut self, buf: &[u8]) -> io::Result<()> {
         LineWriterShim::new(&mut self.inner).write_all(buf)
     }

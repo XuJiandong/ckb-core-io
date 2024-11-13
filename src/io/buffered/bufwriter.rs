@@ -75,6 +75,7 @@ pub struct BufWriter<W: ?Sized + Write> {
     panicked: bool,
     inner: W,
 }
+
 impl<W: Write> BufWriter<W> {
     /// Creates a new `BufWriter<W>` with a default buffer capacity. The default is currently 8 KiB,
     /// but may change in the future.
@@ -175,6 +176,7 @@ impl<W: Write> BufWriter<W> {
         (inner, buf)
     }
 }
+
 impl<W: ?Sized + Write> BufWriter<W> {
     /// Send data in our local buffer into the inner writer, looping as
     /// necessary until either it's all been sent or an error occurs.
@@ -191,6 +193,7 @@ impl<W: ?Sized + Write> BufWriter<W> {
             buffer: &'a mut Vec<u8>,
             written: usize,
         }
+
         impl<'a> BufGuard<'a> {
             fn new(buffer: &'a mut Vec<u8>) -> Self {
                 Self { buffer, written: 0 }
@@ -225,6 +228,7 @@ impl<W: ?Sized + Write> BufWriter<W> {
             self.panicked = true;
             let r = self.inner.write(guard.remaining());
             self.panicked = false;
+
             match r {
                 Ok(0) => {
                     return Err(io::const_io_error!(
@@ -251,6 +255,7 @@ impl<W: ?Sized + Write> BufWriter<W> {
         unsafe {
             self.write_to_buffer_unchecked(&buf[..amt_to_buffer]);
         }
+
         amt_to_buffer
     }
 
@@ -371,6 +376,7 @@ impl<W: ?Sized + Write> BufWriter<W> {
             unsafe {
                 self.write_to_buffer_unchecked(buf);
             }
+
             Ok(buf.len())
         }
     }
@@ -412,6 +418,7 @@ impl<W: ?Sized + Write> BufWriter<W> {
             unsafe {
                 self.write_to_buffer_unchecked(buf);
             }
+
             Ok(())
         }
     }
@@ -430,6 +437,7 @@ impl<W: ?Sized + Write> BufWriter<W> {
             self.buf.set_len(old_len + buf_len);
         }
     }
+
     #[inline]
     fn spare_capacity(&self) -> usize {
         self.buf.capacity() - self.buf.len()
@@ -507,11 +515,13 @@ impl<W: ?Sized + Write> Write for BufWriter<W> {
             unsafe {
                 self.write_to_buffer_unchecked(buf);
             }
+
             Ok(buf.len())
         } else {
             self.write_cold(buf)
         }
     }
+
     #[inline]
     fn write_all(&mut self, buf: &[u8]) -> io::Result<()> {
         // Use < instead of <= to avoid a needless trip through the buffer in some cases.
@@ -521,6 +531,7 @@ impl<W: ?Sized + Write> Write for BufWriter<W> {
             unsafe {
                 self.write_to_buffer_unchecked(buf);
             }
+
             Ok(())
         } else {
             self.write_all_cold(buf)
@@ -529,6 +540,7 @@ impl<W: ?Sized + Write> Write for BufWriter<W> {
     fn is_write_vectored(&self) -> bool {
         true
     }
+
     fn flush(&mut self) -> io::Result<()> {
         self.flush_buf().and_then(|()| self.get_mut().flush())
     }

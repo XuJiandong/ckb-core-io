@@ -358,6 +358,7 @@ where
         buf.try_reserve(len)?;
         buf.push_str(content);
         self.pos += len as u64;
+
         Ok(len)
     }
 }
@@ -372,6 +373,8 @@ where
         self.pos += amt as u64;
     }
 }
+
+// Non-resizing write implementation
 #[inline]
 fn slice_write(pos_mut: &mut u64, slice: &mut [u8], buf: &[u8]) -> io::Result<usize> {
     let pos = cmp::min(*pos_mut, slice.len() as u64);
@@ -414,8 +417,10 @@ fn reserve_and_pad(pos_mut: &mut u64, vec: &mut Vec<u8>, buf_len: usize) -> io::
             vec.set_len(pos);
         }
     }
+
     Ok(pos)
 }
+
 /// Writes the slice to the vec without allocating
 /// # Safety: vec must have buf.len() spare capacity
 unsafe fn vec_write_unchecked(pos: usize, vec: &mut Vec<u8>, buf: &[u8]) -> usize {

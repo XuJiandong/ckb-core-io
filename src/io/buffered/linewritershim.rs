@@ -14,6 +14,7 @@ use crate::io::{self, BufWriter, Write};
 pub struct LineWriterShim<'a, W: ?Sized + Write> {
     buffer: &'a mut BufWriter<W>,
 }
+
 impl<'a, W: ?Sized + Write> LineWriterShim<'a, W> {
     pub fn new(buffer: &'a mut BufWriter<W>) -> Self {
         Self { buffer }
@@ -47,6 +48,7 @@ impl<'a, W: ?Sized + Write> LineWriterShim<'a, W> {
         }
     }
 }
+
 impl<'a, W: ?Sized + Write> Write for LineWriterShim<'a, W> {
     /// Write some data into this BufReader with line buffering. This means
     /// that, if any newlines are present in the data, the data up to the last

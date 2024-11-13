@@ -5,6 +5,7 @@ use crate::io::{
 };
 use alloc::{fmt, string::String, vec::Vec};
 use buffer::Buffer;
+
 /// The `BufReader<R>` struct adds buffering to any reader.
 ///
 /// It can be excessively inefficient to work directly with a [`Read`] instance.
@@ -48,6 +49,7 @@ pub struct BufReader<R: ?Sized> {
     buf: Buffer,
     inner: R,
 }
+
 impl<R: Read> BufReader<R> {
     /// Creates a new `BufReader<R>` with a default buffer capacity. The default is currently 8 KiB,
     /// but may change in the future.
@@ -67,6 +69,7 @@ impl<R: Read> BufReader<R> {
     pub fn new(inner: R) -> BufReader<R> {
         BufReader::with_capacity(DEFAULT_BUF_SIZE, inner)
     }
+
     /// Creates a new `BufReader<R>` with the specified buffer capacity.
     ///
     /// # Examples
@@ -210,6 +213,7 @@ impl<R: ?Sized> BufReader<R> {
     {
         self.inner
     }
+
     /// Invalidates all data in the internal buffer.
     #[inline]
     pub(in crate::io) fn discard_buffer(&mut self) {
@@ -224,6 +228,7 @@ impl<R: ?Sized> BufReader<R> {
         self.buf.initialized()
     }
 }
+
 impl<R: ?Sized + Seek> BufReader<R> {
     /// Seeks relative to the current position. If the new position lies within the buffer,
     /// the buffer will not be flushed, allowing for more efficient seeks.
@@ -242,9 +247,11 @@ impl<R: ?Sized + Seek> BufReader<R> {
                 return Ok(());
             }
         }
+
         self.seek(SeekFrom::Current(offset)).map(drop)
     }
 }
+
 impl<R> SpecReadByte for BufReader<R>
 where
     Self: Read,
@@ -274,6 +281,7 @@ impl<R: ?Sized + Read> Read for BufReader<R> {
         self.consume(nread);
         Ok(nread)
     }
+
     fn read_buf(&mut self, mut cursor: BorrowedCursor<'_>) -> io::Result<()> {
         // If we don't have any buffered data and we're doing a massive read
         // (larger than our internal buffer), bypass our internal buffer
@@ -282,7 +290,9 @@ impl<R: ?Sized + Read> Read for BufReader<R> {
             self.discard_buffer();
             return self.inner.read_buf(cursor);
         }
+
         let prev = cursor.written();
+
         let mut rem = self.fill_buf()?;
         rem.read_buf(cursor.reborrow())?;
 
@@ -304,6 +314,7 @@ impl<R: ?Sized + Read> Read for BufReader<R> {
         }
         crate::io::default_read_exact(self, buf)
     }
+
     fn read_buf_exact(&mut self, mut cursor: BorrowedCursor<'_>) -> io::Result<()> {
         if self
             .buf
@@ -311,6 +322,7 @@ impl<R: ?Sized + Read> Read for BufReader<R> {
         {
             return Ok(());
         }
+
         crate::io::default_read_buf_exact(self, cursor)
     }
     // The inner reader might have an optimized `read_to_end`. Drain our buffer and then
@@ -360,6 +372,7 @@ impl<R: ?Sized + Read> BufRead for BufReader<R> {
     fn fill_buf(&mut self) -> io::Result<&[u8]> {
         self.buf.fill_buf(&mut self.inner)
     }
+
     fn consume(&mut self, amt: usize) {
         self.buf.consume(amt)
     }
@@ -485,6 +498,7 @@ impl<T: ?Sized + SizeHint> SizeHint for BufReader<T> {
     fn lower_bound(&self) -> usize {
         SizeHint::lower_bound(self.get_ref()) + self.buffer().len()
     }
+
     #[inline]
     fn upper_bound(&self) -> Option<usize> {
         SizeHint::upper_bound(self.get_ref()).and_then(|up| self.buffer().len().checked_add(up))
