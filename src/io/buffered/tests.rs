@@ -1,11 +1,14 @@
-use crate::io::prelude::*;
-use crate::io::{
-    self, BorrowedBuf, BufReader, BufWriter, ErrorKind, IoSlice, LineWriter, SeekFrom,
-};
-use crate::mem::MaybeUninit;
-use crate::panic;
-use crate::sync::atomic::{AtomicUsize, Ordering};
-use crate::thread;
+use alloc::boxed::Box;
+use alloc::string::{String, ToString};
+use alloc::vec;
+use alloc::vec::Vec;
+
+use crate::io;
+use crate::io::error::ErrorKind;
+use crate::io::{prelude::*, Error};
+use crate::io::{BorrowedBuf, BufReader, BufWriter, LineWriter, SeekFrom};
+use core::mem::MaybeUninit;
+use core::panic;
 
 /// A dummy reader intended at testing short-reads propagation.
 pub struct ShortReader {
@@ -17,7 +20,11 @@ pub struct ShortReader {
 // rustfmt-on-save.
 impl Read for ShortReader {
     fn read(&mut self, _: &mut [u8]) -> io::Result<usize> {
-        if self.lengths.is_empty() { Ok(0) } else { Ok(self.lengths.remove(0)) }
+        if self.lengths.is_empty() {
+            Ok(0)
+        } else {
+            Ok(self.lengths.remove(0))
+        }
     }
 }
 
@@ -165,22 +172,6 @@ fn test_buffered_reader_stream_position() {
 }
 
 #[test]
-fn test_buffered_reader_stream_position_panic() {
-    let inner: &[u8] = &[5, 6, 7, 0, 1, 2, 3, 4];
-    let mut reader = BufReader::with_capacity(4, io::Cursor::new(inner));
-
-    // cause internal buffer to be filled but read only partially
-    let mut buffer = [0, 0];
-    assert!(reader.read_exact(&mut buffer).is_ok());
-    // rewinding the internal reader will cause buffer to loose sync
-    let inner = reader.get_mut();
-    assert!(inner.seek(SeekFrom::Start(0)).is_ok());
-    // overflow when subtracting the remaining buffer size from current position
-    let result = panic::catch_unwind(panic::AssertUnwindSafe(|| reader.stream_position().ok()));
-    assert!(result.is_err());
-}
-
-#[test]
 fn test_buffered_reader_invalidated_after_read() {
     let inner: &[u8] = &[5, 6, 7, 0, 1, 2, 3, 4];
     let mut reader = BufReader::with_capacity(3, io::Cursor::new(inner));
@@ -256,7 +247,10 @@ fn test_buffered_reader_seek_underflow() {
     assert_eq!(reader.fill_buf().ok().map(|s| s.len()), Some(5));
     // the following seek will require two underlying seeks
     let expected = 9223372036854775802;
-    assert_eq!(reader.seek(SeekFrom::Current(i64::MIN)).ok(), Some(expected));
+    assert_eq!(
+        reader.seek(SeekFrom::Current(i64::MIN)).ok(),
+        Some(expected)
+    );
     assert_eq!(reader.fill_buf().ok().map(|s| s.len()), Some(5));
     // seeking to 0 should empty the buffer.
     assert_eq!(reader.seek(SeekFrom::Current(0)).ok(), Some(expected));
@@ -283,7 +277,7 @@ fn test_buffered_reader_seek_underflow_discard_buffer_between_seeks() {
                 self.first_seek = false;
                 Ok(0)
             } else {
-                Err(io::Error::new(io::ErrorKind::Other, "oh no!"))
+                Err(Error::new(ErrorKind::Other, "oh no!"))
             }
         }
     }
@@ -381,7 +375,10 @@ fn test_buffered_writer_seek() {
     assert_eq!(&w.get_ref().get_ref()[..], &[0, 1, 2, 3, 4, 5, 6, 7][..]);
     assert_eq!(w.seek(SeekFrom::Start(2)).ok(), Some(2));
     w.write_all(&[8, 9]).unwrap();
-    assert_eq!(&w.into_inner().unwrap().into_inner()[..], &[0, 1, 8, 9, 4, 5, 6, 7]);
+    assert_eq!(
+        &w.into_inner().unwrap().into_inner()[..],
+        &[0, 1, 8, 9, 4, 5, 6, 7]
+    );
 }
 
 #[test]
@@ -453,7 +450,9 @@ fn test_lines() {
 
 #[test]
 fn test_short_reads() {
-    let inner = ShortReader { lengths: vec![0, 1, 2, 0, 1, 0] };
+    let inner = ShortReader {
+        lengths: vec![0, 1, 2, 0, 1, 0],
+    };
     let mut reader = BufReader::new(inner);
     let mut buf = [0, 0];
     assert_eq!(reader.read(&mut buf).unwrap(), 0);
@@ -475,7 +474,7 @@ fn dont_panic_in_drop_on_panicked_flush() {
             Ok(buf.len())
         }
         fn flush(&mut self) -> io::Result<()> {
-            Err(io::Error::last_os_error())
+            Err(Error::new(ErrorKind::Other, "test - always_flush_error"))
         }
     }
 
@@ -485,57 +484,6 @@ fn dont_panic_in_drop_on_panicked_flush() {
     // If writer panics *again* due to the flush error then the process will
     // abort.
     panic!();
-}
-
-#[test]
-#[cfg_attr(target_os = "emscripten", ignore)]
-fn panic_in_write_doesnt_flush_in_drop() {
-    static WRITES: AtomicUsize = AtomicUsize::new(0);
-
-    struct PanicWriter;
-
-    impl Write for PanicWriter {
-        fn write(&mut self, _: &[u8]) -> io::Result<usize> {
-            WRITES.fetch_add(1, Ordering::SeqCst);
-            panic!();
-        }
-        fn flush(&mut self) -> io::Result<()> {
-            Ok(())
-        }
-    }
-
-    thread::spawn(|| {
-        let mut writer = BufWriter::new(PanicWriter);
-        let _ = writer.write(b"hello world");
-        let _ = writer.flush();
-    })
-    .join()
-    .unwrap_err();
-
-    assert_eq!(WRITES.load(Ordering::SeqCst), 1);
-}
-
-#[bench]
-fn bench_buffered_reader(b: &mut test::Bencher) {
-    b.iter(|| BufReader::new(io::empty()));
-}
-
-#[bench]
-fn bench_buffered_reader_small_reads(b: &mut test::Bencher) {
-    let data = (0..u8::MAX).cycle().take(1024 * 4).collect::<Vec<_>>();
-    b.iter(|| {
-        let mut reader = BufReader::new(&data[..]);
-        let mut buf = [0u8; 4];
-        for _ in 0..1024 {
-            reader.read_exact(&mut buf).unwrap();
-            core::hint::black_box(&buf);
-        }
-    });
-}
-
-#[bench]
-fn bench_buffered_writer(b: &mut test::Bencher) {
-    b.iter(|| BufWriter::new(io::sink()));
 }
 
 /// A simple `Write` target, designed to be wrapped by `LineWriter` /
@@ -568,12 +516,12 @@ struct ProgrammableSink {
 impl Write for ProgrammableSink {
     fn write(&mut self, data: &[u8]) -> io::Result<usize> {
         if self.always_write_error {
-            return Err(io::Error::new(io::ErrorKind::Other, "test - always_write_error"));
+            return Err(Error::new(ErrorKind::Other, "test - always_write_error"));
         }
 
         match self.max_writes {
             Some(0) if self.error_after_max_writes => {
-                return Err(io::Error::new(io::ErrorKind::Other, "test - max_writes"));
+                return Err(Error::new(ErrorKind::Other, "test - max_writes"));
             }
             Some(0) => return Ok(0),
             Some(ref mut count) => *count -= 1,
@@ -593,7 +541,7 @@ impl Write for ProgrammableSink {
 
     fn flush(&mut self) -> io::Result<()> {
         if self.always_flush_error {
-            Err(io::Error::new(io::ErrorKind::Other, "test - always_flush_error"))
+            Err(Error::new(ErrorKind::Other, "test - always_flush_error"))
         } else {
             Ok(())
         }
@@ -634,162 +582,6 @@ fn erroneous_flush_retried() {
     assert_eq!(&writer.get_ref().buffer, b"a\nb\nc\nd\n");
 }
 
-#[test]
-fn line_vectored() {
-    let mut a = LineWriter::new(Vec::new());
-    assert_eq!(
-        a.write_vectored(&[
-            IoSlice::new(&[]),
-            IoSlice::new(b"\n"),
-            IoSlice::new(&[]),
-            IoSlice::new(b"a"),
-        ])
-        .unwrap(),
-        2,
-    );
-    assert_eq!(a.get_ref(), b"\n");
-
-    assert_eq!(
-        a.write_vectored(&[
-            IoSlice::new(&[]),
-            IoSlice::new(b"b"),
-            IoSlice::new(&[]),
-            IoSlice::new(b"a"),
-            IoSlice::new(&[]),
-            IoSlice::new(b"c"),
-        ])
-        .unwrap(),
-        3,
-    );
-    assert_eq!(a.get_ref(), b"\n");
-    a.flush().unwrap();
-    assert_eq!(a.get_ref(), b"\nabac");
-    assert_eq!(a.write_vectored(&[]).unwrap(), 0);
-    assert_eq!(
-        a.write_vectored(&[
-            IoSlice::new(&[]),
-            IoSlice::new(&[]),
-            IoSlice::new(&[]),
-            IoSlice::new(&[]),
-        ])
-        .unwrap(),
-        0,
-    );
-    assert_eq!(a.write_vectored(&[IoSlice::new(b"a\nb"),]).unwrap(), 3);
-    assert_eq!(a.get_ref(), b"\nabaca\nb");
-}
-
-#[test]
-fn line_vectored_partial_and_errors() {
-    use crate::collections::VecDeque;
-
-    enum Call {
-        Write { inputs: Vec<&'static [u8]>, output: io::Result<usize> },
-        Flush { output: io::Result<()> },
-    }
-
-    #[derive(Default)]
-    struct Writer {
-        calls: VecDeque<Call>,
-    }
-
-    impl Write for Writer {
-        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-            self.write_vectored(&[IoSlice::new(buf)])
-        }
-
-        fn write_vectored(&mut self, buf: &[IoSlice<'_>]) -> io::Result<usize> {
-            match self.calls.pop_front().expect("unexpected call to write") {
-                Call::Write { inputs, output } => {
-                    assert_eq!(inputs, buf.iter().map(|b| &**b).collect::<Vec<_>>());
-                    output
-                }
-                Call::Flush { .. } => panic!("unexpected call to write; expected a flush"),
-            }
-        }
-
-        fn is_write_vectored(&self) -> bool {
-            true
-        }
-
-        fn flush(&mut self) -> io::Result<()> {
-            match self.calls.pop_front().expect("Unexpected call to flush") {
-                Call::Flush { output } => output,
-                Call::Write { .. } => panic!("unexpected call to flush; expected a write"),
-            }
-        }
-    }
-
-    impl Drop for Writer {
-        fn drop(&mut self) {
-            if !thread::panicking() {
-                assert_eq!(self.calls.len(), 0);
-            }
-        }
-    }
-
-    // partial writes keep going
-    let mut a = LineWriter::new(Writer::default());
-    a.write_vectored(&[IoSlice::new(&[]), IoSlice::new(b"abc")]).unwrap();
-
-    a.get_mut().calls.push_back(Call::Write { inputs: vec![b"abc"], output: Ok(1) });
-    a.get_mut().calls.push_back(Call::Write { inputs: vec![b"bc"], output: Ok(2) });
-    a.get_mut().calls.push_back(Call::Write { inputs: vec![b"x", b"\n"], output: Ok(2) });
-
-    a.write_vectored(&[IoSlice::new(b"x"), IoSlice::new(b"\n")]).unwrap();
-
-    a.get_mut().calls.push_back(Call::Flush { output: Ok(()) });
-    a.flush().unwrap();
-
-    // erroneous writes stop and don't write more
-    a.get_mut().calls.push_back(Call::Write { inputs: vec![b"x", b"\na"], output: Err(err()) });
-    a.get_mut().calls.push_back(Call::Flush { output: Ok(()) });
-    assert!(a.write_vectored(&[IoSlice::new(b"x"), IoSlice::new(b"\na")]).is_err());
-    a.flush().unwrap();
-
-    fn err() -> io::Error {
-        io::Error::new(io::ErrorKind::Other, "x")
-    }
-}
-
-/// Test that, in cases where vectored writing is not enabled, the
-/// LineWriter uses the normal `write` call, which more-correctly handles
-/// partial lines
-#[test]
-fn line_vectored_ignored() {
-    let writer = ProgrammableSink::default();
-    let mut writer = LineWriter::new(writer);
-
-    let content = [
-        IoSlice::new(&[]),
-        IoSlice::new(b"Line 1\nLine"),
-        IoSlice::new(b" 2\nLine 3\nL"),
-        IoSlice::new(&[]),
-        IoSlice::new(&[]),
-        IoSlice::new(b"ine 4"),
-        IoSlice::new(b"\nLine 5\n"),
-    ];
-
-    let count = writer.write_vectored(&content).unwrap();
-    assert_eq!(count, 11);
-    assert_eq!(&writer.get_ref().buffer, b"Line 1\n");
-
-    let count = writer.write_vectored(&content[2..]).unwrap();
-    assert_eq!(count, 11);
-    assert_eq!(&writer.get_ref().buffer, b"Line 1\nLine 2\nLine 3\n");
-
-    let count = writer.write_vectored(&content[5..]).unwrap();
-    assert_eq!(count, 5);
-    assert_eq!(&writer.get_ref().buffer, b"Line 1\nLine 2\nLine 3\n");
-
-    let count = writer.write_vectored(&content[6..]).unwrap();
-    assert_eq!(count, 8);
-    assert_eq!(
-        writer.get_ref().buffer.as_slice(),
-        b"Line 1\nLine 2\nLine 3\nLine 4\nLine 5\n".as_ref()
-    );
-}
-
 /// Test that, given this input:
 ///
 /// Line 1\n
@@ -804,7 +596,10 @@ fn line_vectored_ignored() {
 /// This behavior is desirable because it prevents flushing partial lines
 #[test]
 fn partial_write_buffers_line() {
-    let writer = ProgrammableSink { accept_prefix: Some(13), ..Default::default() };
+    let writer = ProgrammableSink {
+        accept_prefix: Some(13),
+        ..Default::default()
+    };
     let mut writer = LineWriter::new(writer);
 
     assert_eq!(writer.write(b"Line 1\nLine 2\nLine 3\nLine4").unwrap(), 21);
@@ -921,8 +716,13 @@ fn line_write_all() {
     };
     let mut writer = LineWriter::new(writer);
 
-    writer.write_all(b"Line 1\nLine 2\nLine 3\nLine 4\nPartial").unwrap();
-    assert_eq!(&writer.get_ref().buffer, b"Line 1\nLine 2\nLine 3\nLine 4\n");
+    writer
+        .write_all(b"Line 1\nLine 2\nLine 3\nLine 4\nPartial")
+        .unwrap();
+    assert_eq!(
+        &writer.get_ref().buffer,
+        b"Line 1\nLine 2\nLine 3\nLine 4\n"
+    );
     writer.write_all(b" Line 5\n").unwrap();
     assert_eq!(
         writer.get_ref().buffer.as_slice(),
@@ -1015,9 +815,10 @@ struct WriteRecorder {
 
 impl Write for WriteRecorder {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        use crate::str::from_utf8;
+        use alloc::str::from_utf8;
 
-        self.events.push(RecordedEvent::Write(from_utf8(buf).unwrap().to_string()));
+        self.events
+            .push(RecordedEvent::Write(from_utf8(buf).unwrap().to_string()));
         Ok(buf.len())
     }
 
@@ -1041,14 +842,17 @@ fn single_formatted_write() {
     // buffer before attempting to write the last "!\n". write_all shouldn't
     // have this limitation.
     writeln!(&mut writer, "{}, {}!", "hello", "world").unwrap();
-    assert_eq!(writer.get_ref().events, [RecordedEvent::Write("hello, world!\n".to_string())]);
+    assert_eq!(
+        writer.get_ref().events,
+        [RecordedEvent::Write("hello, world!\n".to_string())]
+    );
 }
 
 #[test]
 fn bufreader_full_initialize() {
     struct OneByteReader;
     impl Read for OneByteReader {
-        fn read(&mut self, buf: &mut [u8]) -> crate::io::Result<usize> {
+        fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
             if buf.len() > 0 {
                 buf[0] = 0;
                 Ok(1)
@@ -1071,7 +875,7 @@ fn bufreader_full_initialize() {
 /// This is a regression test for https://github.com/rust-lang/rust/issues/127584.
 #[test]
 fn bufwriter_aliasing() {
-    use crate::io::{BufWriter, Cursor};
+    use io::{BufWriter, Cursor};
     let mut v = vec![0; 1024];
     let c = Cursor::new(&mut v);
     let w = BufWriter::new(Box::new(c));

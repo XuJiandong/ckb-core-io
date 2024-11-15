@@ -8,11 +8,12 @@
 //! `pos..filled` is always a valid index into the initialized region of the buffer. This means
 //! that user code which wants to do reads from a `BufReader` via `buffer` + `consume` can do so
 //! without encountering any runtime bounds checks.
+use alloc::boxed::Box;
+use alloc::vec;
 
-use crate::cmp;
 use crate::io::{self, BorrowedBuf, Read};
-use crate::mem::MaybeUninit;
-
+use core::cmp;
+use core::mem::MaybeUninit;
 pub struct Buffer {
     // The buffer.
     buf: Box<[MaybeUninit<u8>]>,
@@ -32,17 +33,25 @@ pub struct Buffer {
 impl Buffer {
     #[inline]
     pub fn with_capacity(capacity: usize) -> Self {
-        let buf = Box::new_uninit_slice(capacity);
-        Self { buf, pos: 0, filled: 0, initialized: 0 }
+        let buf = vec![MaybeUninit::uninit(); capacity].into_boxed_slice();
+        Self {
+            buf,
+            pos: 0,
+            filled: 0,
+            initialized: 0,
+        }
     }
-
     #[inline]
     pub fn buffer(&self) -> &[u8] {
         // SAFETY: self.pos and self.cap are valid, and self.cap => self.pos, and
         // that region is initialized because those are all invariants of this type.
-        unsafe { MaybeUninit::slice_assume_init_ref(self.buf.get_unchecked(self.pos..self.filled)) }
+        unsafe {
+            core::slice::from_raw_parts(
+                self.buf.as_ptr().add(self.pos) as *const u8,
+                self.filled - self.pos,
+            )
+        }
     }
-
     #[inline]
     pub fn capacity(&self) -> usize {
         self.buf.len()

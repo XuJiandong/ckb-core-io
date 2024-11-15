@@ -1,6 +1,19 @@
 [package]
-name = "ckb-core-io"
-version = "0.1.0"
+name = "ckb-rust-std"
+version = "1.0.0"
 edition = "2021"
+authors = ["Lyndon <lynndon@gmail.com>"]
+license = "MIT"
+repository = "https://github.com/XuJiandong/ckb-rust-std"
+keywords = ["no_std", "io", "ckb"]
+readme = "README.md"
+description = "A collection of `no_std` compatible modules ported from Rust's standard library, with an initial focus on the `io` module."
 
 [dependencies]
+
+
+[features]
+default = []
+# since rust 1.81, the core::error::Error is stable
+# we need to add this feature to support old rust versions
+rust_before_181 = []

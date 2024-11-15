@@ -1,19 +1,17 @@
-#![allow(missing_copy_implementations)]
-
 #[cfg(test)]
 mod tests;
 
-use crate::fmt;
-use crate::io::{
-    self, BorrowedCursor, BufRead, IoSlice, IoSliceMut, Read, Seek, SeekFrom, SizeHint, Write,
-};
+use crate::io;
+use crate::io::{BorrowedCursor, BufRead, Read, Seek, SeekFrom, SizeHint, Write};
+use alloc::fmt;
+use alloc::string::String;
+use alloc::vec::Vec;
 
 /// `Empty` ignores any data written via [`Write`], and will always be empty
 /// (returning zero bytes) when read via [`Read`].
 ///
 /// This struct is generally created by calling [`empty()`]. Please
 /// see the documentation of [`empty()`] for more details.
-#[stable(feature = "rust1", since = "1.0.0")]
 #[non_exhaustive]
 #[derive(Copy, Clone, Debug, Default)]
 pub struct Empty;
@@ -50,13 +48,9 @@ pub struct Empty;
 /// assert!(buffer.is_empty());
 /// ```
 #[must_use]
-#[stable(feature = "rust1", since = "1.0.0")]
-#[rustc_const_stable(feature = "const_io_structs", since = "1.79.0")]
 pub const fn empty() -> Empty {
     Empty
 }
-
-#[stable(feature = "rust1", since = "1.0.0")]
 impl Read for Empty {
     #[inline]
     fn read(&mut self, _buf: &mut [u8]) -> io::Result<usize> {
@@ -68,7 +62,6 @@ impl Read for Empty {
         Ok(())
     }
 }
-#[stable(feature = "rust1", since = "1.0.0")]
 impl BufRead for Empty {
     #[inline]
     fn fill_buf(&mut self) -> io::Result<&[u8]> {
@@ -77,8 +70,6 @@ impl BufRead for Empty {
     #[inline]
     fn consume(&mut self, _n: usize) {}
 }
-
-#[stable(feature = "empty_seek", since = "1.51.0")]
 impl Seek for Empty {
     fn seek(&mut self, _pos: SeekFrom) -> io::Result<u64> {
         Ok(0)
@@ -95,24 +86,19 @@ impl Seek for Empty {
 
 impl SizeHint for Empty {
     #[inline]
+    fn lower_bound(&self) -> usize {
+        0
+    }
+    #[inline]
     fn upper_bound(&self) -> Option<usize> {
         Some(0)
     }
 }
-
-#[stable(feature = "empty_write", since = "1.73.0")]
 impl Write for Empty {
     #[inline]
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         Ok(buf.len())
     }
-
-    #[inline]
-    fn write_vectored(&mut self, bufs: &[IoSlice<'_>]) -> io::Result<usize> {
-        let total_len = bufs.iter().map(|b| b.len()).sum();
-        Ok(total_len)
-    }
-
     #[inline]
     fn is_write_vectored(&self) -> bool {
         true
@@ -123,20 +109,11 @@ impl Write for Empty {
         Ok(())
     }
 }
-
-#[stable(feature = "empty_write", since = "1.73.0")]
 impl Write for &Empty {
     #[inline]
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         Ok(buf.len())
     }
-
-    #[inline]
-    fn write_vectored(&mut self, bufs: &[IoSlice<'_>]) -> io::Result<usize> {
-        let total_len = bufs.iter().map(|b| b.len()).sum();
-        Ok(total_len)
-    }
-
     #[inline]
     fn is_write_vectored(&self) -> bool {
         true
@@ -152,7 +129,6 @@ impl Write for &Empty {
 ///
 /// This struct is generally created by calling [`repeat()`]. Please
 /// see the documentation of [`repeat()`] for more details.
-#[stable(feature = "rust1", since = "1.0.0")]
 pub struct Repeat {
     byte: u8,
 }
@@ -172,13 +148,9 @@ pub struct Repeat {
 /// assert_eq!(buffer, [0b101, 0b101, 0b101]);
 /// ```
 #[must_use]
-#[stable(feature = "rust1", since = "1.0.0")]
-#[rustc_const_stable(feature = "const_io_structs", since = "1.79.0")]
 pub const fn repeat(byte: u8) -> Repeat {
     Repeat { byte }
 }
-
-#[stable(feature = "rust1", since = "1.0.0")]
 impl Read for Repeat {
     #[inline]
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
@@ -213,20 +185,6 @@ impl Read for Repeat {
     fn read_to_string(&mut self, _: &mut String) -> io::Result<usize> {
         Err(io::Error::from(io::ErrorKind::OutOfMemory))
     }
-
-    #[inline]
-    fn read_vectored(&mut self, bufs: &mut [IoSliceMut<'_>]) -> io::Result<usize> {
-        let mut nwritten = 0;
-        for buf in bufs {
-            nwritten += self.read(buf)?;
-        }
-        Ok(nwritten)
-    }
-
-    #[inline]
-    fn is_read_vectored(&self) -> bool {
-        true
-    }
 }
 
 impl SizeHint for Repeat {
@@ -240,8 +198,6 @@ impl SizeHint for Repeat {
         None
     }
 }
-
-#[stable(feature = "std_debug", since = "1.16.0")]
 impl fmt::Debug for Repeat {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Repeat").finish_non_exhaustive()
@@ -252,7 +208,6 @@ impl fmt::Debug for Repeat {
 ///
 /// This struct is generally created by calling [`sink()`]. Please
 /// see the documentation of [`sink()`] for more details.
-#[stable(feature = "rust1", since = "1.0.0")]
 #[non_exhaustive]
 #[derive(Copy, Clone, Debug, Default)]
 pub struct Sink;
@@ -275,23 +230,13 @@ pub struct Sink;
 /// assert_eq!(num_bytes, 5);
 /// ```
 #[must_use]
-#[stable(feature = "rust1", since = "1.0.0")]
-#[rustc_const_stable(feature = "const_io_structs", since = "1.79.0")]
 pub const fn sink() -> Sink {
     Sink
 }
-
-#[stable(feature = "rust1", since = "1.0.0")]
 impl Write for Sink {
     #[inline]
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         Ok(buf.len())
-    }
-
-    #[inline]
-    fn write_vectored(&mut self, bufs: &[IoSlice<'_>]) -> io::Result<usize> {
-        let total_len = bufs.iter().map(|b| b.len()).sum();
-        Ok(total_len)
     }
 
     #[inline]
@@ -304,20 +249,11 @@ impl Write for Sink {
         Ok(())
     }
 }
-
-#[stable(feature = "write_mt", since = "1.48.0")]
 impl Write for &Sink {
     #[inline]
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         Ok(buf.len())
     }
-
-    #[inline]
-    fn write_vectored(&mut self, bufs: &[IoSlice<'_>]) -> io::Result<usize> {
-        let total_len = bufs.iter().map(|b| b.len()).sum();
-        Ok(total_len)
-    }
-
     #[inline]
     fn is_write_vectored(&self) -> bool {
         true
