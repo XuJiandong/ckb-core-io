@@ -315,7 +315,7 @@ use core::{cmp, slice};
 mod buffered;
 pub(crate) mod copy;
 mod cursor;
-mod error;
+pub mod error;
 mod impls;
 pub mod prelude;
 mod util;
