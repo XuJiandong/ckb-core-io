@@ -19,4 +19,5 @@ jobs:
     - name: Test
       run: |
         cargo test
-        cargo test --features rust_before_181
+    - name: Test on Rust 1.75
+      run: rustup run 1.75.0 cargo test  --features rust_before_181

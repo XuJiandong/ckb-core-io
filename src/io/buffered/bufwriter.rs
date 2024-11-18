@@ -1,7 +1,9 @@
-use crate::io::{self, error::ErrorKind, IntoInnerError, Seek, SeekFrom, Write, DEFAULT_BUF_SIZE};
+use crate::io::{
+    self, error::core_error as error, error::ErrorKind, IntoInnerError, Seek, SeekFrom, Write,
+    DEFAULT_BUF_SIZE,
+};
 use alloc::fmt;
 use alloc::vec::Vec;
-use core::error;
 use core::mem::{self, ManuallyDrop};
 use core::ptr;
 /// Wraps a writer and buffers its output.
