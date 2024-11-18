@@ -20,4 +20,6 @@ jobs:
       run: |
         cargo test
     - name: Test on Rust 1.75
-      run: rustup run 1.75.0 cargo test  --features rust_before_181
+      run: |
+        rustup install 1.75.0
+        rustup run 1.75.0 cargo test  --features rust_before_181
